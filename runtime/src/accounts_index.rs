@@ -11,6 +11,7 @@ use {
         secondary_index::*,
     },
     bv::BitVec,
+    itertools::chain,
     log::*,
     ouroboros::self_referencing,
     rand::{thread_rng, Rng},
@@ -647,6 +648,56 @@ impl RollingBitField {
             }
         }
         all
+    }
+
+    /// return all items < 'max_slot_exclusive'
+    #[allow(dead_code)] // temporary
+    pub fn get_all_less_than(&self, max_slot_exclusive: Slot) -> Vec<u64> {
+        // chain(
+        //     self.excess
+        //         .iter()
+        //         .map(|&p| p.to_owned())
+        //         .collect::<Vec<Slot>>(),
+        //     self.min..self.max_exclusive
+        // )
+        // .filter(|x| x < &max_slot_exclusive && self.contains_assume_in_range(&x))
+        // .collect()
+
+        chain(
+            self.excess
+                .iter()
+                .map(|&p| p.to_owned())
+                .filter(|x| x < &max_slot_exclusive),
+            (self.min..self.max_exclusive)
+                .filter(|x| x < &max_slot_exclusive && self.contains_assume_in_range(x)),
+        )
+        .collect()
+
+        // (self.min..self.max_exclusive)
+        //     .filter(|x| x < &max_slot_exclusive)
+        //     .collect()
+
+        // self.excess
+        //     .iter()
+        //     .filter(|x| x < &&max_slot_exclusive)
+        //     .collect()
+
+        // let mut all = Vec::with_capacity(self.count);
+        // self.excess.iter().for_each(|slot| {
+        //     if slot < &max_slot_exclusive {
+        //         all.push(*slot)
+        //     }
+        // });
+        // for key in self.min..self.max_exclusive {
+        //     if key >= max_slot_exclusive {
+        //         break;
+        //     }
+
+        //     if self.contains_assume_in_range(&key) {
+        //         all.push(key);
+        //     }
+        // }
+        // all
     }
 }
 
