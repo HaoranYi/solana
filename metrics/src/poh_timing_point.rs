@@ -202,4 +202,18 @@ mod test {
             "PohTimingPoint: slot=100, root_slot=0, poh_full=100"
         );
     }
+
+    #[test]
+    fn test_foo() {
+        fn f1() -> Option<i8> {
+            return Some(1);
+        }
+
+        fn f2() -> Option<i8> {
+            let i = f1()?;
+            Some(i)
+        }
+
+        assert!(f2() == Some(1));
+    }
 }
