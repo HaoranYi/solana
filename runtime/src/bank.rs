@@ -6762,6 +6762,7 @@ impl Drop for Bank {
     }
 }
 
+/// utility function used for testing and benchmarking.
 pub mod test_utils {
     use {super::Bank, solana_sdk::hash::hashv};
     pub fn goto_end_of_slot(bank: &mut Bank) {
