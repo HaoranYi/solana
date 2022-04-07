@@ -211,3 +211,23 @@ fn bench_bank_update_recent_blockhashes(bencher: &mut Bencher) {
         bank.update_recent_blockhashes();
     });
 }
+
+#[bench]
+//#[ignore]
+fn bench_bank_signal_send(bencher: &mut Bencher) {
+    use crossbeam_channel::unbounded;
+    let (s, _r) = unbounded();
+    bencher.iter(|| {
+        let _ = s.send((1 as u64, 2 as u64));
+    });
+}
+
+#[bench]
+//#[ignore]
+fn bench_bank_signal_try_send(bencher: &mut Bencher) {
+    use crossbeam_channel::unbounded;
+    let (s, _r) = unbounded();
+    bencher.iter(|| {
+        let _ = s.try_send((1 as u64, 2 as u64));
+    });
+}
