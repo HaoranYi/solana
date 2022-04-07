@@ -6762,14 +6762,17 @@ impl Drop for Bank {
     }
 }
 
-pub fn goto_end_of_slot(bank: &mut Bank) {
-    let mut tick_hash = bank.last_blockhash();
-    loop {
-        tick_hash = hashv(&[tick_hash.as_ref(), &[42]]);
-        bank.register_tick(&tick_hash);
-        if tick_hash == bank.last_blockhash() {
-            bank.freeze();
-            return;
+pub mod test_utils {
+    use {super::Bank, solana_sdk::hash::hashv};
+    pub fn goto_end_of_slot(bank: &mut Bank) {
+        let mut tick_hash = bank.last_blockhash();
+        loop {
+            tick_hash = hashv(&[tick_hash.as_ref(), &[42]]);
+            bank.register_tick(&tick_hash);
+            if tick_hash == bank.last_blockhash() {
+                bank.freeze();
+                return;
+            }
         }
     }
 }
@@ -6831,6 +6834,7 @@ pub(crate) mod tests {
             },
         },
         std::{result, thread::Builder, time::Duration},
+        test_utils::goto_end_of_slot,
     };
 
     fn new_sanitized_message(
