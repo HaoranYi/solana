@@ -60,7 +60,11 @@ impl IndexEntry {
 
     pub fn data_bucket_from_num_slots(num_slots: Slot) -> u64 {
         // Compute the ceiling of log2 for integer
-        (Slot::BITS - (num_slots - 1).leading_zeros()) as u64
+        if num_slots == 0 {
+            0
+        } else {
+            (Slot::BITS - (num_slots - 1).leading_zeros()) as u64
+        }
     }
 
     pub fn data_bucket_from_num_slots0(num_slots: Slot) -> u64 {
