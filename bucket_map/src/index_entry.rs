@@ -63,6 +63,10 @@ impl IndexEntry {
         (Slot::BITS - (num_slots - 1).leading_zeros()) as u64
     }
 
+    pub fn data_bucket_from_num_slots0(num_slots: Slot) -> u64 {
+        (num_slots as f64).log2().ceil() as u64
+    }
+
     pub fn data_bucket_ix(&self) -> u64 {
         Self::data_bucket_from_num_slots(self.num_slots)
     }

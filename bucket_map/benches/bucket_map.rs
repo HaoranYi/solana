@@ -21,7 +21,10 @@ macro_rules! DEFINE_NxM_BENCH {
 extern crate test;
 use {
     rayon::prelude::*,
-    solana_bucket_map::bucket_map::{BucketMap, BucketMapConfig},
+    solana_bucket_map::{
+        bucket_map::{BucketMap, BucketMapConfig},
+        index_entry::IndexEntry,
+    },
     solana_sdk::pubkey::Pubkey,
     std::{collections::hash_map::HashMap, sync::RwLock},
     test::Bencher,
@@ -73,5 +76,23 @@ fn do_bench_insert_bucket_map(bencher: &mut Bencher, n: usize, m: usize) {
                 index.update(&key, |_| Some((vec![(j, IndexValue::default())], 0)));
             }
         })
+    });
+}
+
+#[bench]
+fn bench_bank_log2_ceiling_int(bencher: &mut Bencher) {
+    bencher.iter(|| {
+        for x in 1..512 {
+            IndexEntry::data_bucket_from_num_slots(x as u64);
+        }
+    });
+}
+
+#[bench]
+fn bench_bank_log2_ceiling_float(bencher: &mut Bencher) {
+    bencher.iter(|| {
+        for x in 1..512 {
+            IndexEntry::data_bucket_from_num_slots0(x as u64);
+        }
     });
 }
