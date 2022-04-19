@@ -18,7 +18,7 @@ use {
     },
 };
 
-type CounterMap = HashMap<(&'static str, u64), CounterPoint>;
+type CounterMap = HashMap<(&'static str, u64), (Level, CounterPoint)>;
 
 impl From<CounterPoint> for DataPoint {
     fn from(counter_point: CounterPoint) -> Self {
@@ -159,12 +159,17 @@ impl MetricsAgent {
         Self { sender }
     }
 
-    fn collect_points(points: &mut Vec<DataPoint>, counters: &mut CounterMap) -> Vec<DataPoint> {
-        let mut ret: Vec<DataPoint> = points.drain(..).collect();
+    fn collect_points(
+        points: &mut Vec<(Level, DataPoint)>,
+        counters: &mut CounterMap,
+    ) -> Vec<DataPoint> {
+        let mut ret: Vec<(Level, DataPoint)> = points.drain(..).collect();
         for (_, v) in counters.drain() {
-            ret.push(v.into());
+            ret.push((v.0, v.1.into()));
         }
-        ret
+        ret.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+        ret.into_iter().map(|x| x.1).collect()
     }
 
     fn write(
@@ -213,7 +218,7 @@ impl MetricsAgent {
     ) {
         trace!("run: enter");
         let mut last_write_time = Instant::now();
-        let mut points = Vec::<DataPoint>::new();
+        let mut points = Vec::<(Level, DataPoint)>::new();
         let mut counters = CounterMap::new();
 
         let max_points = write_frequency.as_secs() as usize * max_points_per_sec;
@@ -235,15 +240,15 @@ impl MetricsAgent {
                     }
                     MetricsCommand::Submit(point, level) => {
                         log!(level, "{}", point);
-                        points.push(point);
+                        points.push((level, point));
                     }
-                    MetricsCommand::SubmitCounter(counter, _level, bucket) => {
+                    MetricsCommand::SubmitCounter(counter, level, bucket) => {
                         debug!("{:?}", counter);
                         let key = (counter.name, bucket);
                         if let Some(value) = counters.get_mut(&key) {
-                            value.count += counter.count;
+                            value.1.count += counter.count;
                         } else {
-                            counters.insert(key, counter);
+                            counters.insert(key, (level, counter));
                         }
                     }
                 },
