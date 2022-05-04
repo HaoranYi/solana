@@ -95,7 +95,7 @@ impl ClusterSlots {
             slot_nodes.write().unwrap().extend(nodes_stakes);
         }
         time.stop();
-        info!("haha cluster_slot {} {}", len, time.as_nanos());
+        info!("haha cluster_slot {} {}", len, time.as_us());
 
         {
             let mut cluster_slots = self.cluster_slots.write().unwrap();
