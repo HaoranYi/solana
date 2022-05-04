@@ -91,7 +91,7 @@ impl ClusterSlots {
                 .collect()
         };
         time.stop();
-        len = slot_nodes_stakes.len();
+        let len = slot_nodes_stakes.len();
         info!("haha cluster_slot1 {} {}", len, time.as_us());
 
         let mut time = Measure::start("cluster_slot");
