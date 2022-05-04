@@ -77,6 +77,8 @@ impl ClusterSlots {
                     .zip(std::iter::repeat((epoch_slots.from, stake)))
             })
             .into_group_map();
+
+        let mut time = Measure::start("cluster_slot");
         let slot_nodes_stakes: Vec<_> = {
             let mut cluster_slots = self.cluster_slots.write().unwrap();
             slot_nodes_stakes
@@ -87,9 +89,13 @@ impl ClusterSlots {
                 })
                 .collect()
         };
+        let len = slot_nodes_stakes.len();
         for (slot_nodes, nodes_stakes) in slot_nodes_stakes {
             slot_nodes.write().unwrap().extend(nodes_stakes);
         }
+        time.stop();
+        info!("haha cluster_slot {} {}", len, time.as_nanos());
+
         {
             let mut cluster_slots = self.cluster_slots.write().unwrap();
             *cluster_slots = cluster_slots.split_off(&(root + 1));
