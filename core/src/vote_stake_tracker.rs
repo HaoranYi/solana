@@ -19,7 +19,7 @@ impl VoteStakeTracker {
         thresholds_to_check: &[f64],
     ) -> (Vec<bool>, bool) {
         let is_new = !self.voted.contains(&vote_pubkey);
-        if is_new {
+        let ret = if is_new {
             self.voted.insert(vote_pubkey);
             let old_stake = self.stake;
             let new_stake = self.stake + stake;
@@ -34,7 +34,11 @@ impl VoteStakeTracker {
             (reached_threshold_results, is_new)
         } else {
             (vec![false; thresholds_to_check.len()], is_new)
-        }
+        };
+
+        info!("haha vote_len: {}", ret.0.len());
+
+        ret
     }
 
     pub fn voted(&self) -> &HashSet<Pubkey> {
