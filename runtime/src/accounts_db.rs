@@ -6190,7 +6190,7 @@ impl AccountsDb {
 
     // previous_slot_entry_was_cached = true means we just need to assert that after this update is complete
     //  that there are no items we would have put in reclaims that are not cached
-    fn update_index<'a, T: ReadableAccount + Sync>(
+    fn update_index0<'a, T: ReadableAccount + Sync>(
         &self,
         infos: Vec<AccountInfo>,
         accounts: impl StorableAccounts<'a, T>,
@@ -6228,6 +6228,35 @@ impl AccountsDb {
             })
             .flatten()
             .collect::<Vec<_>>()
+    }
+
+    fn update_index<'a, T: ReadableAccount + Sync>(
+        &self,
+        infos: Vec<AccountInfo>,
+        accounts: impl StorableAccounts<'a, T>,
+        previous_slot_entry_was_cached: bool,
+    ) -> SlotList<AccountInfo> {
+        let target_slot = accounts.target_slot();
+        let len = std::cmp::min(accounts.len(), infos.len());
+
+        let mut reclaims = Vec::with_capacity(len / 2);
+        (0..len).into_iter().for_each(|i| {
+            let info = infos[i];
+            let pubkey_account = (accounts.pubkey(i), accounts.account(i));
+            let pubkey = pubkey_account.0;
+            let old_slot = accounts.slot(i);
+            self.accounts_index.upsert(
+                target_slot,
+                old_slot,
+                pubkey,
+                pubkey_account.1,
+                &self.account_indexes,
+                info,
+                &mut reclaims,
+                previous_slot_entry_was_cached,
+            );
+        });
+        reclaims
     }
 
     fn should_not_shrink(aligned_bytes: u64, total_bytes: u64, num_stores: usize) -> bool {
