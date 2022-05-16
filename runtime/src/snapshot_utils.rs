@@ -7,7 +7,9 @@ use {
         accounts_update_notifier_interface::AccountsUpdateNotifier,
         bank::{Bank, BankSlotDelta},
         builtins::Builtins,
-        hardened_unpack::{unpack_snapshot, ParallelSelector, UnpackError, UnpackedAppendVecMap},
+        hardened_unpack::{
+            unpack_snapshot, unpack_snapshot1, ParallelSelector, UnpackError, UnpackedAppendVecMap,
+        },
         serde_snapshot::{bank_from_streams, bank_to_stream, SerdeStyle, SnapshotStreams},
         shared_buffer_reader::{SharedBuffer, SharedBufferReader},
         snapshot_archive_info::{
@@ -1436,6 +1438,57 @@ pub fn purge_old_snapshot_archives(
 }
 
 fn unpack_snapshot_local<T: 'static + Read + std::marker::Send, F: Fn() -> T>(
+    reader: F,
+    ledger_dir: &Path,
+    account_paths: &[PathBuf],
+    parallel_archivers: usize,
+) -> Result<UnpackedAppendVecMap> {
+    //assert!(parallel_archivers > 0);
+
+    let mut archive = Archive::new(reader());
+    match unpack_snapshot1(&mut archive, ledger_dir, account_paths) {
+        Ok(r) => Ok(r),
+        Err(e) => Err(SnapshotError::UnpackError(e)),
+    }
+    // if let Ok(m) = unpack_snapshot(&mut archive, ledger_dir, account_paths) {
+    //     Ok(m)
+    // }
+    // else {
+    //     Err(SnapshotError:)
+    // }
+
+    // a shared 'reader' that reads the decompressed stream once, keeps some history, and acts as a reader for multiple parallel archive readers
+    //let shared_buffer = SharedBuffer::new(reader());
+
+    // allocate all readers before any readers start reading
+    // let readers = (0..parallel_archivers)
+    //     .into_iter()
+    //     .map(|_| SharedBufferReader::new(&shared_buffer))
+    //     .collect::<Vec<_>>();
+
+    // create 'parallel_archivers' # of parallel workers, each responsible for 1/parallel_archivers of all the files to extract.
+    // let all_unpacked_append_vec_map = readers
+    //     .into_par_iter()
+    //     .enumerate()
+    //     .map(|(index, reader)| {
+    //         let parallel_selector = Some(ParallelSelector {
+    //             index,
+    //             divisions: parallel_archivers,
+    //         });
+    //         let mut archive = Archive::new(reader);
+    //         unpack_snapshot(&mut archive, ledger_dir, account_paths, parallel_selector)
+    //     })
+    //     .collect::<Vec<_>>();
+
+    // let mut unpacked_append_vec_map = UnpackedAppendVecMap::new();
+    // for h in all_unpacked_append_vec_map {
+    //     unpacked_append_vec_map.extend(h?);
+    // }
+
+    //Ok(unpacked_append_vec_map)
+}
+
+fn unpack_snapshot_local0<T: 'static + Read + std::marker::Send, F: Fn() -> T>(
     reader: F,
     ledger_dir: &Path,
     account_paths: &[PathBuf],

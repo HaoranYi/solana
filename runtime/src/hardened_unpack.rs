@@ -292,6 +292,54 @@ impl ParallelSelector {
     }
 }
 
+pub fn unpack_snapshot1<A: Read>(
+    archive: &mut Archive<A>,
+    ledger_dir: &Path,
+    account_paths: &[PathBuf],
+    //parallel_selector: Option<ParallelSelector>,
+) -> Result<UnpackedAppendVecMap> {
+    assert!(!account_paths.is_empty());
+    let mut unpacked_append_vec_map = UnpackedAppendVecMap::new();
+    let mut i = 0;
+
+    unpack_archive(
+        archive,
+        MAX_SNAPSHOT_ARCHIVE_UNPACKED_APPARENT_SIZE,
+        MAX_SNAPSHOT_ARCHIVE_UNPACKED_ACTUAL_SIZE,
+        MAX_SNAPSHOT_ARCHIVE_UNPACKED_COUNT,
+        |parts, kind| {
+            if is_valid_snapshot_archive_entry(parts, kind) {
+                i += 1;
+                // match &parallel_selector {
+                //     Some(parallel_selector) => {
+                //         if !parallel_selector.select_index(i - 1) {
+                //             return UnpackPath::Ignore;
+                //         }
+                //     }
+                //     None => {}
+                // };
+                if let ["accounts", file] = parts {
+                    // Randomly distribute the accounts files about the available `account_paths`,
+                    let path_index = thread_rng().gen_range(0, account_paths.len());
+                    match account_paths.get(path_index).map(|path_buf| {
+                        unpacked_append_vec_map
+                            .insert(file.to_string(), path_buf.join("accounts").join(file));
+                        path_buf.as_path()
+                    }) {
+                        Some(path) => UnpackPath::Valid(path),
+                        None => UnpackPath::Invalid,
+                    }
+                } else {
+                    UnpackPath::Valid(ledger_dir)
+                }
+            } else {
+                UnpackPath::Invalid
+            }
+        },
+    )
+    .map(|_| unpacked_append_vec_map)
+}
+
 pub fn unpack_snapshot<A: Read>(
     archive: &mut Archive<A>,
     ledger_dir: &Path,
