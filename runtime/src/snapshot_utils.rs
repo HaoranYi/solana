@@ -1443,19 +1443,13 @@ fn unpack_snapshot_local<T: 'static + Read + std::marker::Send, F: Fn() -> T>(
     account_paths: &[PathBuf],
     parallel_archivers: usize,
 ) -> Result<UnpackedAppendVecMap> {
-    //assert!(parallel_archivers > 0);
+    assert!(parallel_archivers > 0);
 
     let mut archive = Archive::new(reader());
     match unpack_snapshot1(&mut archive, ledger_dir, account_paths) {
         Ok(r) => Ok(r),
         Err(e) => Err(SnapshotError::UnpackError(e)),
     }
-    // if let Ok(m) = unpack_snapshot(&mut archive, ledger_dir, account_paths) {
-    //     Ok(m)
-    // }
-    // else {
-    //     Err(SnapshotError:)
-    // }
 
     // a shared 'reader' that reads the decompressed stream once, keeps some history, and acts as a reader for multiple parallel archive readers
     //let shared_buffer = SharedBuffer::new(reader());
@@ -1576,30 +1570,38 @@ fn untar_snapshot_in<P: AsRef<Path>>(
     archive_format: ArchiveFormat,
     parallel_divisions: usize,
 ) -> Result<UnpackedAppendVecMap> {
-    let ret = untar_snapshot_mmap(
+    untar_snapshot_file(
         snapshot_tar.as_ref(),
         unpack_dir,
         account_paths,
         archive_format,
         parallel_divisions,
-    );
+    )
 
-    if ret.is_ok() {
-        ret
-    } else {
-        warn!(
-            "Failed to memory map the snapshot file: {}",
-            snapshot_tar.as_ref().display(),
-        );
+    // let ret = untar_snapshot_mmap(
+    //     snapshot_tar.as_ref(),
+    //     unpack_dir,
+    //     account_paths,
+    //     archive_format,
+    //     parallel_divisions,
+    // );
 
-        untar_snapshot_file(
-            snapshot_tar.as_ref(),
-            unpack_dir,
-            account_paths,
-            archive_format,
-            parallel_divisions,
-        )
-    }
+    // if ret.is_ok() {
+    //     ret
+    // } else {
+    //     warn!(
+    //         "Failed to memory map the snapshot file: {}",
+    //         snapshot_tar.as_ref().display(),
+    //     );
+
+    //     untar_snapshot_file(
+    //         snapshot_tar.as_ref(),
+    //         unpack_dir,
+    //         account_paths,
+    //         archive_format,
+    //         parallel_divisions,
+    //     )
+    // }
 }
 
 fn untar_snapshot_mmap(
