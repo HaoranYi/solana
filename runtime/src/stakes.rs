@@ -46,14 +46,14 @@ pub enum InvalidCacheEntryReason {
 type StakeAccount = stake_account::StakeAccount<Delegation>;
 
 #[derive(Default, Debug, AbiExample)]
-pub(crate) struct StakesCache(RwLock<Stakes<StakeAccount>>);
+pub struct StakesCache(RwLock<Stakes<StakeAccount>>);
 
 impl StakesCache {
-    pub(crate) fn new(stakes: Stakes<StakeAccount>) -> Self {
+    pub fn new(stakes: Stakes<StakeAccount>) -> Self {
         Self(RwLock::new(stakes))
     }
 
-    pub(crate) fn stakes(&self) -> RwLockReadGuard<Stakes<StakeAccount>> {
+    pub fn stakes(&self) -> RwLockReadGuard<Stakes<StakeAccount>> {
         self.0.read().unwrap()
     }
 
@@ -211,19 +211,19 @@ impl StakesCache {
 #[derive(Default, Clone, PartialEq, Debug, Deserialize, Serialize, AbiExample)]
 pub struct Stakes<T: Clone> {
     /// vote accounts
-    vote_accounts: VoteAccounts,
+    pub vote_accounts: VoteAccounts,
 
     /// stake_delegations
-    stake_delegations: ImHashMap<Pubkey, T>,
+    pub stake_delegations: ImHashMap<Pubkey, T>,
 
     /// unused
-    unused: u64,
+    pub unused: u64,
 
     /// current epoch, used to calculate current stake
-    epoch: Epoch,
+    pub epoch: Epoch,
 
     /// history of staking levels
-    stake_history: StakeHistory,
+    pub stake_history: StakeHistory,
 }
 
 // For backward compatibility, we can only serialize and deserialize
