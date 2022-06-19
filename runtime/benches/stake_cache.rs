@@ -24,16 +24,15 @@ fn create_stake_account(stake: u64, vote_pubkey: &Pubkey) -> (Pubkey, AccountSha
     )
 }
 /**
-running 2 tests
+running 2 tests (3000)
 test bench_stake_cache_write       ... bench:   8,758,355 ns/iter (+/- 3,730,077)
 test bench_stake_cache_write_batch ... bench:   6,020,470 ns/iter (+/- 977,997)
 */
-
 #[bench]
 fn bench_stake_cache_write(bencher: &mut Bencher) {
     let mut accounts = vec![];
 
-    for _i in 0..3000 {
+    for _i in 0..600_000 {
         let vote_pubkey = solana_sdk::pubkey::new_rand();
         let (stake_pubkey, stake_account) = create_stake_account(10, &vote_pubkey);
         accounts.push((stake_pubkey, stake_account));
@@ -59,7 +58,7 @@ fn bench_stake_cache_write(bencher: &mut Bencher) {
 fn bench_stake_cache_write_batch(bencher: &mut Bencher) {
     let mut accounts = vec![];
 
-    for _i in 0..3000 {
+    for _i in 0..600_000 {
         let vote_pubkey = solana_sdk::pubkey::new_rand();
         let (stake_pubkey, stake_account) = create_stake_account(10, &vote_pubkey);
         accounts.push((stake_pubkey, stake_account));

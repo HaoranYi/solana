@@ -519,8 +519,10 @@ pub(crate) mod serde_stakes_enum_compat {
 pub mod tests {
     use {
         super::*,
+        log::*,
         rand::Rng,
         rayon::ThreadPoolBuilder,
+        solana_measure::measure::Measure,
         solana_sdk::{account::WritableAccount, pubkey::Pubkey, rent::Rent, stake},
         solana_stake_program::stake_state,
         solana_vote_program::vote_state::{self, VoteState, VoteStateVersions},
@@ -1014,5 +1016,46 @@ pub mod tests {
             StakesEnum::Delegations(delegations) => delegations,
         };
         assert_eq!(other, &stakes)
+    }
+
+    /**
+    running 1 test
+    test stakes::tests::test_timing_stake_cache_write has been running for over 60 seconds
+    write loop time: 26852ms
+    write batch time: 26747ms
+    test stakes::tests::test_timing_stake_cache_write ... ok
+         */
+    #[test]
+    fn test_timing_stake_cache_write() {
+        let mut accounts = vec![];
+
+        for _i in 0..600_000 {
+            let vote_pubkey = solana_sdk::pubkey::new_rand();
+            let (stake_pubkey, stake_account) = create_stake_account(10, &vote_pubkey);
+            accounts.push((stake_pubkey, stake_account));
+        }
+
+        let accounts = accounts.iter().map(|x| (&x.0, &x.1)).collect::<Vec<_>>();
+
+        let stakes_cache = StakesCache::new(Stakes {
+            epoch: 10,
+            ..Stakes::default()
+        });
+
+        let mut t = Measure::start("store_time");
+        for (key, account) in &accounts {
+            stakes_cache.check_and_store(key, account);
+        }
+        t.stop();
+        println!("write loop time: {}ms", t.as_ms());
+
+        let stakes_cache = StakesCache::new(Stakes {
+            epoch: 10,
+            ..Stakes::default()
+        });
+        let mut t = Measure::start("store_time");
+        stakes_cache.check_and_store_batch(&accounts);
+        t.stop();
+        println!("write batch time: {}ms", t.as_ms());
     }
 }
