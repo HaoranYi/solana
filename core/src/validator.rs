@@ -2091,8 +2091,6 @@ mod tests {
 
         panic_handler_generate_coredump();
 
-        panic!("haha");
-
         solana_logger::setup();
         let leader_keypair = Keypair::new();
         let leader_node = Node::new_localhost_with_pubkey(&leader_keypair.pubkey());
