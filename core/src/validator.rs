@@ -1,5 +1,4 @@
 //! The `validator` module hosts all the validator microservices.
-
 pub use solana_perf::report_target_features;
 use {
     crate::{
@@ -2074,6 +2073,26 @@ mod tests {
 
     #[test]
     fn validator_exit() {
+        fn panic_handler_generate_coredump() {
+            let default_panic = std::panic::take_hook();
+
+            std::panic::set_hook(Box::new(move |panic_info| {
+                default_panic(panic_info);
+
+                let pid = std::process::id();
+
+                use {
+                    libc::{kill, SIGQUIT},
+                    std::convert::TryInto,
+                };
+                unsafe { kill(pid.try_into().unwrap(), SIGQUIT) };
+            }));
+        }
+
+        panic_handler_generate_coredump();
+
+        panic!("haha");
+
         solana_logger::setup();
         let leader_keypair = Keypair::new();
         let leader_node = Node::new_localhost_with_pubkey(&leader_keypair.pubkey());
