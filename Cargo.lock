@@ -4841,6 +4841,7 @@ dependencies = [
  "histogram",
  "itertools",
  "lazy_static",
+ "libc",
  "log",
  "lru",
  "matches",
