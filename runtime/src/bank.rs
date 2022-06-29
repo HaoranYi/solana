@@ -2016,6 +2016,10 @@ impl Bank {
 
         time.stop();
 
+        let num_stake_accounts = new.stakes_cache.num_stake_accounts();
+        let num_vote_accounts = new.stakes_cache.num_vote_accounts();
+        let num_staked_nodes = new.stakes_cache.num_staked_nodes();
+
         datapoint_info!(
             "bank-new_from_parent-heights",
             ("slot", slot, i64),
@@ -2050,6 +2054,9 @@ impl Bank {
             ("update_epoch_us", update_epoch_time.as_us(), i64),
             ("update_sysvars_us", update_sysvars_time.as_us(), i64),
             ("fill_sysvar_cache_us", fill_sysvar_cache_time.as_us(), i64),
+            ("num_stake_accounts", num_stake_accounts as i64, i64),
+            ("num_vote_accounts", num_vote_accounts as i64, i64),
+            ("num_staked_nodes", num_staked_nodes as i64, i64),
         );
 
         parent
