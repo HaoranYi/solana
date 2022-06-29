@@ -1,5 +1,6 @@
 use {
     itertools::Itertools,
+    log::info,
     serde::ser::{Serialize, Serializer},
     solana_sdk::{
         account::{accounts_equal, Account, AccountSharedData, ReadableAccount},
@@ -105,6 +106,7 @@ impl VoteAccounts {
 
     pub fn staked_nodes(&self) -> Arc<HashMap<Pubkey, u64>> {
         self.staked_nodes_once.call_once(|| {
+            info!("haha create");
             let staked_nodes = self
                 .vote_accounts
                 .values()
@@ -115,8 +117,16 @@ impl VoteAccounts {
                 })
                 .into_grouping_map()
                 .aggregate(|acc, _node_pubkey, stake| Some(acc.unwrap_or_default() + stake));
-            *self.staked_nodes.write().unwrap() = Arc::new(staked_nodes)
+
+            info!("haha install staked_nodes len={}", staked_nodes.len());
+            *self.staked_nodes.write().unwrap() = Arc::new(staked_nodes);
+
+            info!(
+                "haha read staked_nodes len={}",
+                self.staked_nodes.read().unwrap().len()
+            );
         });
+        info!("haha return");
         self.staked_nodes.read().unwrap().clone()
     }
 
