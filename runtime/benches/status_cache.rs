@@ -63,3 +63,38 @@ fn bench_status_cache_root_slot_deltas(bencher: &mut Bencher) {
 
     bencher.iter(|| test::black_box(status_cache.root_slot_deltas()));
 }
+
+/// Helper function to retain only max n of element in a vector
+pub fn retain_rotate<T>(v: &mut Vec<T>, n: usize) {
+    if v.len() > n {
+        let to_truncate = v.len() - n;
+        v.rotate_left(to_truncate);
+        v.truncate(n);
+    }
+}
+
+/// Helper function to retain only max n of element in a vector
+pub fn retain_drain<T>(v: &mut Vec<T>, n: usize) {
+    if v.len() > n {
+        let to_truncate = v.len() - n;
+        v.drain(0..to_truncate);
+    }
+}
+
+#[bench]
+fn bench_rotate(bencher: &mut Bencher) {
+    bencher.iter(|| {
+        let mut v = vec![0..1000];
+        retain_rotate(&mut v, 50);
+        v
+    });
+}
+
+#[bench]
+fn bench_drain(bencher: &mut Bencher) {
+    bencher.iter(|| {
+        let mut v = vec![0..1000];
+        retain_drain(&mut v, 50);
+        v
+    });
+}
