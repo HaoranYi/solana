@@ -65,6 +65,7 @@ fn bench_status_cache_root_slot_deltas(bencher: &mut Bencher) {
 }
 
 /// Helper function to retain only max n of element in a vector
+#[inline(always)]
 pub fn retain_rotate<T>(v: &mut Vec<T>, n: usize) {
     if v.len() > n {
         let to_truncate = v.len() - n;
@@ -74,6 +75,7 @@ pub fn retain_rotate<T>(v: &mut Vec<T>, n: usize) {
 }
 
 /// Helper function to retain only max n of element in a vector
+#[inline(always)]
 pub fn retain_drain<T>(v: &mut Vec<T>, n: usize) {
     if v.len() > n {
         let to_truncate = v.len() - n;
@@ -81,20 +83,27 @@ pub fn retain_drain<T>(v: &mut Vec<T>, n: usize) {
     }
 }
 
-#[bench]
-fn bench_rotate(bencher: &mut Bencher) {
-    bencher.iter(|| {
-        let mut v = vec![0..1000];
-        retain_rotate(&mut v, 50);
-        v
-    });
+#[inline(always)]
+pub fn retain_while<T>(v: &mut Vec<T>, n: usize) {
+    while v.len() > n {
+        v.remove(0);
+    }
 }
 
 #[bench]
-fn bench_drain(bencher: &mut Bencher) {
-    bencher.iter(|| {
-        let mut v = vec![0..1000];
-        retain_drain(&mut v, 50);
-        v
-    });
+fn bench_retain_rotate(bencher: &mut Bencher) {
+    let mut v = vec![0..1000];
+    bencher.iter(|| test::black_box(retain_rotate(&mut v.clone(), 500)));
+}
+
+#[bench]
+fn bench_retain_drain(bencher: &mut Bencher) {
+    let mut v = vec![0..1000];
+    bencher.iter(|| test::black_box(retain_drain(&mut v.clone(), 500)));
+}
+
+#[bench]
+fn bench_retain_while(bencher: &mut Bencher) {
+    let mut v = vec![0..1000];
+    bencher.iter(|| test::black_box(retain_while(&mut v.clone(), 500)));
 }
