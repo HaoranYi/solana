@@ -3730,7 +3730,8 @@ impl AccountsDb {
         let mut current_ancient = None;
         let mut dropped_roots = vec![];
 
-        for slot in sorted_slots {
+        for slot in &sorted_slots {
+            let slot = *slot;
             let old_storages =
                 match self.get_storages_to_move_to_ancient_append_vec(slot, &mut current_ancient) {
                     Some(old_storages) => old_storages,
@@ -3742,7 +3743,7 @@ impl AccountsDb {
 
             if guard.is_none() {
                 // we are now doing interesting work in squashing ancient
-                guard = Some(self.active_stats.activate(ActiveStatItem::SquashAncient))
+                guard = Some(self.active_stats.activate(ActiveStatItem::SquashAncient));
                 if let Some(first_slot) = sorted_slots.first() {
                     info!(
                         "ancient_append_vec: combine_ancient_slots first slot: {}, num_roots: {}",

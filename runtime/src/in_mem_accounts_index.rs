@@ -537,7 +537,7 @@ impl<T: IndexValue> InMemAccountsIndex<T> {
                         // but, this has proven to be far too slow at high account counts
                         let directly_to_disk = false;
 
-                        let enable_lazy_disk_load = true;
+                        let enable_lazy_disk_load = false;
 
                         let previous_slot_entry_was_cached =
                             reclaim == UpsertReclaim::PreviousSlotEntryWasCached;

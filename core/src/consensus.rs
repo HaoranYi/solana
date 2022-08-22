@@ -985,7 +985,7 @@ impl Tower {
         if let Some(vote) = vote {
             if let Some(fork_stake) = voted_stakes.get(&vote.slot) {
                 let lockout = *fork_stake as f64 / total_stake as f64;
-                if fork_stake != total_stake {
+                if *fork_stake != total_stake {
                 warn!(
                     "fork_stake slot: {}, vote slot: {}, lockout: {} fork_stake: {} total_stake: {}",
                     slot, vote.slot, lockout, fork_stake, total_stake
