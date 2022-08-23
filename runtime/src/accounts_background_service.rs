@@ -196,7 +196,7 @@ impl SnapshotRequestHandler {
                 } else {
                     Hash::default()
                 };
-                info!("ha {}", line!());
+                info!("haha {}", line!());
 
                 let mut shrink_time = Measure::start("shrink_time");
                 if !accounts_db_caching_enabled {
@@ -204,7 +204,7 @@ impl SnapshotRequestHandler {
                         .process_stale_slot_with_budget(0, SHRUNKEN_ACCOUNT_PER_INTERVAL);
                 }
                 shrink_time.stop();
-                info!("ha {}", line!());
+                info!("haha {}", line!());
 
                 let mut flush_accounts_cache_time = Measure::start("flush_accounts_cache_time");
                 if accounts_db_caching_enabled {
@@ -227,7 +227,7 @@ impl SnapshotRequestHandler {
                     );
                 }
                 flush_accounts_cache_time.stop();
-                info!("ha {}", line!());
+                info!("haha {}", line!());
 
                 let hash_for_testing = if test_hash_calculation {
                     let use_index_hash_calculation = false;
@@ -261,14 +261,14 @@ impl SnapshotRequestHandler {
                 // the frozen hash.
                 snapshot_root_bank.clean_accounts(true, false, *last_full_snapshot_slot);
                 clean_time.stop();
-                info!("ha {}", line!());
+                info!("haha {}", line!());
 
                 if accounts_db_caching_enabled {
                     shrink_time = Measure::start("shrink_time");
                     snapshot_root_bank.shrink_candidate_slots();
                     shrink_time.stop();
                 }
-                info!("ha {}", line!());
+                info!("haha {}", line!());
 
                 let block_height = snapshot_root_bank.block_height();
                 let snapshot_type = if snapshot_utils::should_take_full_snapshot(
@@ -304,7 +304,7 @@ impl SnapshotRequestHandler {
                     hash_for_testing,
                     snapshot_type,
                 );
-                info!("ha {}", line!());
+                info!("haha {}", line!());
                 if let Err(e) = result {
                     warn!(
                         "Error taking bank snapshot. slot: {}, snapshot type: {:?}, err: {:?}",
@@ -330,7 +330,7 @@ impl SnapshotRequestHandler {
                 snapshot_utils::purge_old_bank_snapshots(&self.snapshot_config.bank_snapshots_dir);
                 purge_old_snapshots_time.stop();
                 total_time.stop();
-                info!("ha {}", line!());
+                info!("haha {}", line!());
 
                 datapoint_info!(
                     "handle_snapshot_requests-timing",
@@ -478,10 +478,10 @@ impl AccountsBackgroundService {
                         break;
                     }
                     let start_time = Instant::now();
-info!("ha {}", line!());
+                    info!("haha {}", line!());
                     // Grab the current root bank
                     let bank = bank_forks.read().unwrap().root_bank().clone();
-                    info!("ha {}", line!());
+                    info!("haha {}", line!());
 
                     // Purge accounts of any dead slots
                     Self::remove_dead_slots(
@@ -491,7 +491,7 @@ info!("ha {}", line!());
                         &mut total_remove_slots_time,
                     );
 
-                    info!("ha {}", line!());
+                    info!("haha {}", line!());
                     Self::expire_old_recycle_stores(&bank, &mut last_expiration_check_time);
 
                     let non_snapshot_time = last_snapshot_end_time
@@ -500,8 +500,8 @@ info!("ha {}", line!());
                         })
                         .unwrap_or_default();
 
-                        info!("ha {}", line!());
-                        // Check to see if there were any requests for snapshotting banks
+                    info!("haha {}", line!());
+                    // Check to see if there were any requests for snapshotting banks
                     // < the current root bank `bank` above.
 
                     // Claim: Any snapshot request for slot `N` found here implies that the last cleanup
@@ -528,7 +528,7 @@ info!("ha {}", line!());
                     if snapshot_block_height_option_result.is_some() {
                         last_snapshot_end_time = Some(Instant::now());
                     }
-                    info!("ha {}", line!());
+                    info!("haha {}", line!());
 
                     if accounts_db_caching_enabled {
                         // Note that the flush will do an internal clean of the
@@ -537,7 +537,7 @@ info!("ha {}", line!());
                         // slots >= bank.slot()
                         bank.flush_accounts_cache_if_needed();
                     }
-                    info!("ha {}", line!());
+                    info!("haha {}", line!());
 
                     if let Some(snapshot_block_height_result) = snapshot_block_height_option_result
                     {
@@ -563,7 +563,7 @@ info!("ha {}", line!());
                                 )
                                 .min(SHRUNKEN_ACCOUNT_PER_INTERVAL);
                         }
-                        info!("ha {}", line!());
+                        info!("haha {}", line!());
                         if bank.block_height() - last_cleaned_block_height
                             > (CLEAN_INTERVAL_BLOCKS + thread_rng().gen_range(0, 10))
                         {
@@ -574,13 +574,13 @@ info!("ha {}", line!());
                                 // slots >= bank.slot()
                                 bank.force_flush_accounts_cache();
                             }
-                            info!("ha {}", line!());
+                            info!("haha {}", line!());
                             bank.clean_accounts(true, false, last_full_snapshot_slot);
-                            info!("ha {}", line!());
+                            info!("haha {}", line!());
                             last_cleaned_block_height = bank.block_height();
                         }
                     }
-                    info!("ha {}", line!());
+                    info!("haha {}", line!());
                     stats.record_and_maybe_submit(start_time.elapsed());
                     sleep(Duration::from_millis(INTERVAL_MS));
                 }
