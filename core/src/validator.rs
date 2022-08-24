@@ -116,9 +116,6 @@ use {
 const MAX_COMPLETED_DATA_SETS_IN_CHANNEL: usize = 100_000;
 const WAIT_FOR_SUPERMAJORITY_THRESHOLD_PERCENT: u64 = 80;
 
-/// maximum drop bank signal queue length
-const MAX_DROP_BANK_SIGNAL_QUEUE_SIZE: usize = 10_000;
-
 pub struct ValidatorConfig {
     pub halt_at_slot: Option<Slot>,
     pub expected_genesis_hash: Option<Hash>,
@@ -1470,7 +1467,7 @@ fn load_blockstore(
     // BankForks from now on will be descended from the root bank and thus will inherit
     // the bank drop callback.
     assert_eq!(bank_forks.read().unwrap().banks().len(), 1);
-    let (pruned_banks_sender, pruned_banks_receiver) = bounded(MAX_DROP_BANK_SIGNAL_QUEUE_SIZE);
+    let (pruned_banks_sender, pruned_banks_receiver) = unbounded();
     {
         let root_bank = bank_forks.read().unwrap().root_bank();
         root_bank.set_callback(Some(Box::new(
