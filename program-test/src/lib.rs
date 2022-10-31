@@ -1091,7 +1091,7 @@ impl ProgramTestContext {
         let bank_forks = self.bank_forks.read().unwrap();
         let bank = bank_forks.working_bank();
 
-        let mut vote_account = bank.get_account(vote_account_address).unwrap();
+        let vote_account = bank.get_account(vote_account_address).unwrap();
 
         for i in 0..number_of_stake_accounts {
             let keypair = Keypair::new();
