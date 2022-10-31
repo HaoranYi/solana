@@ -276,6 +276,86 @@ async fn stake_rewards_from_warp() {
     );
 }
 
+#[tokio::test]
+async fn stake_rewards_limit_bench() {
+    // Initialize and start the test network
+    let program_test = ProgramTest::default();
+    let mut context = program_test.start_with_context().await;
+    let vote_address = setup_vote(&mut context).await;
+
+    let stake_addresses = vec![];
+    for _i in 0..600_000 {
+        let user_keypair = Keypair::new();
+        let stake_lamports = 1_000_000_000_000;
+        let stake_address =
+            setup_stake(&mut context, &user_keypair, &vote_address, stake_lamports).await;
+
+        let account = context
+            .banks_client
+            .get_account(stake_address)
+            .await
+            .expect("account exists")
+            .unwrap();
+        assert_eq!(account.lamports, stake_lamports);
+        stake_address.push(stake_address);
+    }
+
+    let stake_address = stake_addresses[0];
+
+    // warp one epoch forward for normal inflation, no rewards collected
+    let first_normal_slot = context.genesis_config().epoch_schedule.first_normal_slot;
+    context.warp_to_slot(first_normal_slot).unwrap();
+    let account = context
+        .banks_client
+        .get_account(stake_address)
+        .await
+        .expect("account exists")
+        .unwrap();
+    assert_eq!(account.lamports, stake_lamports);
+
+    context.increment_vote_account_credits(&vote_address, 100);
+
+    // go forward and see that rewards have been distributed
+    let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
+    context
+        .warp_to_slot(first_normal_slot + slots_per_epoch)
+        .unwrap();
+
+    let account = context
+        .banks_client
+        .get_account(stake_address)
+        .await
+        .expect("account exists")
+        .unwrap();
+    assert!(account.lamports > stake_lamports);
+
+    // check that stake is fully active
+    let stake_history_account = context
+        .banks_client
+        .get_account(stake_history::id())
+        .await
+        .expect("account exists")
+        .unwrap();
+
+    let clock_account = context
+        .banks_client
+        .get_account(clock::id())
+        .await
+        .expect("account exists")
+        .unwrap();
+
+    let stake_state: StakeState = deserialize(&account.data).unwrap();
+    let stake_history: StakeHistory = deserialize(&stake_history_account.data).unwrap();
+    let clock: Clock = deserialize(&clock_account.data).unwrap();
+    let stake = stake_state.stake().unwrap();
+    assert_eq!(
+        stake
+            .delegation
+            .stake_activating_and_deactivating(clock.epoch, Some(&stake_history)),
+        StakeActivationStatus::with_effective(stake.delegation.stake),
+    );
+}
+
 async fn check_credits_observed(
     banks_client: &mut BanksClient,
     stake_address: Pubkey,
