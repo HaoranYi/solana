@@ -1098,7 +1098,7 @@ impl ProgramTestContext {
             let stake_pubkey = keypair.pubkey();
             let stake_account = Account::from(stake_state::create_account(
                 &stake_pubkey,
-                &vote_account_address,
+                vote_account_address,
                 &vote_account,
                 &Rent::default(),
                 1_000_000_000_000,
