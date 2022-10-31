@@ -1101,7 +1101,7 @@ impl ProgramTestContext {
                 &vote_account_address,
                 &vote_account,
                 &Rent::default(),
-                100_000,
+                1_000_000_000_000,
             ));
             bank.store_account(&stake_pubkey, &stake_account);
         }
