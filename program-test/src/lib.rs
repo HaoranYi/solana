@@ -1093,7 +1093,7 @@ impl ProgramTestContext {
 
         let mut vote_account = bank.get_account(vote_account_address).unwrap();
 
-        for _ in 0..number_of_stake_accounts {
+        for i in 0..number_of_stake_accounts {
             let keypair = Keypair::new();
             let stake_pubkey = keypair.pubkey();
             let stake_account = Account::from(stake_state::create_account(
@@ -1104,6 +1104,7 @@ impl ProgramTestContext {
                 1_000_000_000_000,
             ));
             bank.store_account(&stake_pubkey, &stake_account);
+            println!("haha: create stake account {} {}", i, stake_pubkey);
         }
 
         // generate some vote activity for rewards
