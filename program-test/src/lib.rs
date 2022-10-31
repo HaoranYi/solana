@@ -41,6 +41,7 @@ use {
         signature::{Keypair, Signer},
         sysvar::{Sysvar, SysvarId},
     },
+    solana_stake_program::stake_state,
     solana_vote_program::vote_state::{self, VoteState, VoteStateVersions},
     std::{
         cell::RefCell,
