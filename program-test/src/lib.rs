@@ -1082,6 +1082,42 @@ impl ProgramTestContext {
         bank.store_account(vote_account_address, &vote_account);
     }
 
+    pub fn add_stake_acccounts(
+        &mut self,
+        vote_account_address: &Pubkey,
+        number_of_stake_accounts: u64,
+    ) {
+        let bank_forks = self.bank_forks.read().unwrap();
+        let bank = bank_forks.working_bank();
+
+        let mut vote_account = bank.get_account(vote_account_address).unwrap();
+
+        for _ in 0..number_of_stake_accounts {
+            let keypair = Keypair::new();
+            let stake_pubkey = keypair.pubkey();
+            let stake_account = Account::from(stake_state::create_account(
+                &stake_pubkey,
+                &vote_account_address,
+                &vote_account,
+                &Rent::default(),
+                100_000,
+            ));
+            bank.store_account(&stake_pubkey, &stake_account);
+        }
+
+        // generate some vote activity for rewards
+        // let mut vote_account = bank.get_account(vote_account_address).unwrap();
+        // let mut vote_state = vote_state::from(&vote_account).unwrap();
+
+        // let epoch = bank.epoch();
+        // for _ in 0..number_of_credits {
+        //     vote_state.increment_credits(epoch, 1);
+        // }
+        // let versioned = VoteStateVersions::new_current(vote_state);
+        // vote_state::to(&versioned, &mut vote_account).unwrap();
+        //bank.store_account(stake_pubkey, &stake_account);
+    }
+
     /// Create or overwrite an account, subverting normal runtime checks.
     ///
     /// This method exists to make it easier to set up artificial situations

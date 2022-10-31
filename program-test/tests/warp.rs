@@ -283,25 +283,26 @@ async fn stake_rewards_limit_bench() {
     let mut context = program_test.start_with_context().await;
     let vote_address = setup_vote(&mut context).await;
 
-    let mut stake_addresses = vec![];
+    //let mut stake_addresses = vec![];
     let stake_lamports = 1_000_000_000_000;
-    for _i in 0..600_000 {
-        let user_keypair = Keypair::new();
-        let stake_address =
-            setup_stake(&mut context, &user_keypair, &vote_address, stake_lamports).await;
+    //for i in 0..600_000 {
+    let user_keypair = Keypair::new();
+    let stake_address =
+        setup_stake(&mut context, &user_keypair, &vote_address, stake_lamports).await;
 
-        let account = context
-            .banks_client
-            .get_account(stake_address)
-            .await
-            .expect("account exists")
-            .unwrap();
-        assert_eq!(account.lamports, stake_lamports);
-        stake_addresses.push(stake_address);
-        println!("create stake account: {:?}", stake_address);
-    }
+    let account = context
+        .banks_client
+        .get_account(stake_address)
+        .await
+        .expect("account exists")
+        .unwrap();
+    assert_eq!(account.lamports, stake_lamports);
+    //stake_addresses.push(stake_address);
 
-    let stake_address = stake_addresses[0];
+    //println!("create stake account {}: {:?}", i, stake_address);
+    //}
+
+    //let stake_address = stake_addresses[0];
 
     // warp one epoch forward for normal inflation, no rewards collected
     let first_normal_slot = context.genesis_config().epoch_schedule.first_normal_slot;
@@ -315,6 +316,8 @@ async fn stake_rewards_limit_bench() {
     assert_eq!(account.lamports, stake_lamports);
 
     context.increment_vote_account_credits(&vote_address, 100);
+
+    context.add_stake_acccounts(&vote_address, 600_000);
 
     // go forward and see that rewards have been distributed
     let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
