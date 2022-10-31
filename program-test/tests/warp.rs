@@ -277,15 +277,28 @@ async fn stake_rewards_from_warp() {
 }
 
 #[tokio::test]
-async fn stake_rewards_limit_bench() {
+async fn stake_rewards_limit_bench_600k() {
+    stake_rewards_limit_bench_core(600_000).await;
+}
+
+#[tokio::test]
+async fn stake_rewards_limit_bench_500k() {
+    stake_rewards_limit_bench_core(500_000).await;
+}
+
+#[tokio::test]
+async fn stake_rewards_limit_bench_400k() {
+    stake_rewards_limit_bench_core(400_000).await;
+}
+
+async fn stake_rewards_limit_bench_core(num_stake_accounts: u64) {
     // Initialize and start the test network
     let program_test = ProgramTest::default();
     let mut context = program_test.start_with_context().await;
     let vote_address = setup_vote(&mut context).await;
 
-    //let mut stake_addresses = vec![];
     let stake_lamports = 1_000_000_000_000;
-    //for i in 0..600_000 {
+
     let user_keypair = Keypair::new();
     let stake_address =
         setup_stake(&mut context, &user_keypair, &vote_address, stake_lamports).await;
@@ -298,15 +311,7 @@ async fn stake_rewards_limit_bench() {
         .unwrap();
     assert_eq!(account.lamports, stake_lamports);
 
-    //context.add_stake_acccounts(&vote_address, 600_000);
-    context.add_stake_acccounts(&vote_address, 1_000);
-
-    //stake_addresses.push(stake_address);
-
-    //println!("create stake account {}: {:?}", i, stake_address);
-    //}
-
-    //let stake_address = stake_addresses[0];
+    context.add_stake_acccounts(&vote_address, num_stake_accounts);
 
     // warp one epoch forward for normal inflation, no rewards collected
     let first_normal_slot = context.genesis_config().epoch_schedule.first_normal_slot;
