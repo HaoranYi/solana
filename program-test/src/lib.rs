@@ -1104,7 +1104,9 @@ impl ProgramTestContext {
                 1_000_000_000_000,
             ));
             bank.store_account(&stake_pubkey, &stake_account);
-            println!("haha: create stake account {} {}", i, stake_pubkey);
+            if i % 100 == 0 {
+                println!("haha: create stake account {} {}", i, stake_pubkey);
+            }
         }
 
         // generate some vote activity for rewards

@@ -297,6 +297,10 @@ async fn stake_rewards_limit_bench() {
         .expect("account exists")
         .unwrap();
     assert_eq!(account.lamports, stake_lamports);
+
+    //context.add_stake_acccounts(&vote_address, 600_000);
+    context.add_stake_acccounts(&vote_address, 1_000);
+
     //stake_addresses.push(stake_address);
 
     //println!("create stake account {}: {:?}", i, stake_address);
@@ -316,8 +320,6 @@ async fn stake_rewards_limit_bench() {
     assert_eq!(account.lamports, stake_lamports);
 
     context.increment_vote_account_credits(&vote_address, 100);
-
-    context.add_stake_acccounts(&vote_address, 600_000);
 
     // go forward and see that rewards have been distributed
     let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
