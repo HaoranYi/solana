@@ -2705,6 +2705,7 @@ impl Bank {
 
         // sort stake delegations by account lamport descending
         let mut m = Measure::start("stake_account_sort_us");
+        let num_stake_delegations = stake_delegations.len();
         stake_delegations.sort_by(|a, b| {
             let x = a.1;
             let y = b.1;
@@ -2719,7 +2720,11 @@ impl Bank {
             &stake_delegations[..]
         };
         m.stop();
-        datapoint_info!("stake_account_sort_time", ("sort_time_us", m.as_us(), i64),);
+        datapoint_info!(
+            "stake_account_sort_time",
+            ("sort_time_us", m.as_us(), i64),
+            ("num_stake_delegations", num_stake_delegations, i64)
+        );
 
         // Obtain all unique voter pubkeys from stake delegations.
         fn merge(mut acc: HashSet<Pubkey>, other: HashSet<Pubkey>) -> HashSet<Pubkey> {
