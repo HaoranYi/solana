@@ -277,6 +277,11 @@ async fn stake_rewards_from_warp() {
 }
 
 #[tokio::test]
+async fn stake_rewards_limit_bench_700k() {
+    stake_rewards_limit_bench_core(700_000).await;
+}
+
+#[tokio::test]
 async fn stake_rewards_limit_bench_600k() {
     stake_rewards_limit_bench_core(600_000).await;
 }
