@@ -1083,6 +1083,7 @@ impl ProgramTestContext {
         bank.store_account(vote_account_address, &vote_account);
     }
 
+    /// Add additional stake accounts to benchmark stake rewards performance
     pub fn add_stake_acccounts(
         &mut self,
         vote_account_address: &Pubkey,
@@ -1105,7 +1106,7 @@ impl ProgramTestContext {
             ));
             bank.store_account(&stake_pubkey, &stake_account);
             if i % 100 == 0 {
-                println!("haha: create stake account {} {}", i, stake_pubkey);
+                println!("create stake account {} {}", i, stake_pubkey);
             }
         }
     }
