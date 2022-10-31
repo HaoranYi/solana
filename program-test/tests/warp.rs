@@ -298,6 +298,7 @@ async fn stake_rewards_limit_bench() {
             .unwrap();
         assert_eq!(account.lamports, stake_lamports);
         stake_addresses.push(stake_address);
+        println!("create stake account: {:?}", stake_address);
     }
 
     let stake_address = stake_addresses[0];
