@@ -283,10 +283,10 @@ async fn stake_rewards_limit_bench() {
     let mut context = program_test.start_with_context().await;
     let vote_address = setup_vote(&mut context).await;
 
-    let stake_addresses = vec![];
+    let mut stake_addresses = vec![];
+    let stake_lamports = 1_000_000_000_000;
     for _i in 0..600_000 {
         let user_keypair = Keypair::new();
-        let stake_lamports = 1_000_000_000_000;
         let stake_address =
             setup_stake(&mut context, &user_keypair, &vote_address, stake_lamports).await;
 
@@ -297,7 +297,7 @@ async fn stake_rewards_limit_bench() {
             .expect("account exists")
             .unwrap();
         assert_eq!(account.lamports, stake_lamports);
-        stake_address.push(stake_address);
+        stake_addresses.push(stake_address);
     }
 
     let stake_address = stake_addresses[0];
