@@ -2701,7 +2701,26 @@ impl Bank {
         F: Fn(&RewardCalculationEvent) + Send + Sync,
     {
         let stakes = self.stakes_cache.stakes();
-        let stake_delegations: Vec<_> = stakes.stake_delegations().iter().collect();
+        let mut stake_delegations: Vec<_> = stakes.stake_delegations().iter().collect();
+
+        // sort stake delegations by account lamport descending
+        let mut m = Measure::start("stake_account_sort_us");
+        stake_delegations.sort_by(|a, b| {
+            let x = a.1;
+            let y = b.1;
+            y.lamports().partial_cmp(&x.lamports()).unwrap()
+        });
+
+        // Limit stake delegations to top 600K
+        let stake_delegations = if stake_delegations.len() > 600_000 {
+            let (left, _) = stake_delegations.split_at(600_000);
+            left
+        } else {
+            &stake_delegations[..]
+        };
+        m.stop();
+        datapoint_info!("stake_account_sort_time", ("sort_time_us", m.as_us(), i64),);
+
         // Obtain all unique voter pubkeys from stake delegations.
         fn merge(mut acc: HashSet<Pubkey>, other: HashSet<Pubkey>) -> HashSet<Pubkey> {
             if acc.len() < other.len() {
@@ -2778,23 +2797,24 @@ impl Bank {
                     .collect()
             });
         // Join stake accounts with vote-accounts.
-        let push_stake_delegation = |(stake_pubkey, stake_account): (&Pubkey, &StakeAccount<_>)| {
-            let delegation = stake_account.delegation();
-            let mut vote_delegations =
-                match vote_with_stake_delegations_map.get_mut(&delegation.voter_pubkey) {
-                    Some(vote_delegations) => vote_delegations,
-                    None => return,
-                };
-            if let Some(reward_calc_tracer) = reward_calc_tracer.as_ref() {
-                let delegation =
-                    InflationPointCalculationEvent::Delegation(delegation, solana_vote_program);
-                let event = RewardCalculationEvent::Staking(stake_pubkey, &delegation);
-                reward_calc_tracer(&event);
-            }
-            let stake_account = StakeAccount::from(stake_account.clone());
-            let stake_delegation = (*stake_pubkey, stake_account);
-            vote_delegations.delegations.push(stake_delegation);
-        };
+        let push_stake_delegation =
+            |(stake_pubkey, stake_account): &(&Pubkey, &StakeAccount<_>)| {
+                let delegation = stake_account.delegation();
+                let mut vote_delegations =
+                    match vote_with_stake_delegations_map.get_mut(&delegation.voter_pubkey) {
+                        Some(vote_delegations) => vote_delegations,
+                        None => return,
+                    };
+                if let Some(reward_calc_tracer) = reward_calc_tracer.as_ref() {
+                    let delegation =
+                        InflationPointCalculationEvent::Delegation(delegation, solana_vote_program);
+                    let event = RewardCalculationEvent::Staking(stake_pubkey, &delegation);
+                    reward_calc_tracer(&event);
+                }
+                let stake_account = StakeAccount::from((*stake_account).clone());
+                let stake_delegation = (**stake_pubkey, stake_account);
+                vote_delegations.delegations.push(stake_delegation);
+            };
         thread_pool.install(|| {
             stake_delegations
                 .into_par_iter()
