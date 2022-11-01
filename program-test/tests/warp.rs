@@ -296,6 +296,11 @@ async fn stake_rewards_limit_bench_400k() {
     stake_rewards_limit_bench_core(400_000).await;
 }
 
+#[tokio::test]
+async fn stake_rewards_limit_bench_50k() {
+    stake_rewards_limit_bench_core(50_000).await;
+}
+
 async fn stake_rewards_limit_bench_core(num_stake_accounts: u64) {
     // Initialize and start the test network
     let program_test = ProgramTest::default();
