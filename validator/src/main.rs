@@ -976,6 +976,11 @@ pub fn main() {
                 .help("Disable reporting of OS disk statistics.")
         )
         .arg(
+            Arg::with_name("no_os_open_fd_stats_reporting")
+                .long("no-os-open-fd-stats-reporting")
+                .help("Disable reporting of open file descriptors statistics for current process.")
+        )
+        .arg(
             Arg::with_name("accounts-hash-interval-slots")
                 .long("accounts-hash-interval-slots")
                 .value_name("NUMBER")
