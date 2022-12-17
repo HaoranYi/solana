@@ -1584,6 +1584,9 @@ impl Bank {
             debug_do_not_add_builtins,
         );
 
+        println!("--------");
+        bank.dump_accounts();
+
         // genesis needs stakes for all epochs up to the epoch implied by
         //  slot = 0 and genesis configuration
         {
@@ -1595,6 +1598,10 @@ impl Bank {
             }
             bank.update_stake_history(None);
         }
+
+        println!("--------");
+        bank.dump_accounts();
+
         bank.update_clock(None);
         bank.update_rent();
         bank.update_epoch_schedule();
@@ -3172,6 +3179,7 @@ impl Bank {
         F: Fn(&RewardCalculationEvent) + Send + Sync,
     {
         let stakes = self.stakes_cache.stakes();
+        let stakes = (*stakes).clone(); // take a copy of the stakes???
         let stake_delegations: Vec<_> = stakes.stake_delegations().iter().collect();
         // Obtain all unique voter pubkeys from stake delegations.
         fn merge(mut acc: HashSet<Pubkey>, other: HashSet<Pubkey>) -> HashSet<Pubkey> {
@@ -7074,11 +7082,24 @@ impl Bank {
         parents
     }
 
+    pub fn dump_accounts(&self) {
+        self.rc.accounts.scan_slot(self.slot(), |a| {
+            println!("{:?}", a);
+            Some(())
+        });
+    }
+
     pub fn store_account<T: ReadableAccount + Sync + ZeroLamport>(
         &self,
         pubkey: &Pubkey,
         account: &T,
     ) {
+        use solana_sdk::sysvar::clock;
+
+        if *pubkey == clock::id() || *pubkey == sysvar::fees::id() {
+            panic!("haha");
+        }
+
         self.store_accounts((
             self.slot(),
             &[(pubkey, account)][..],

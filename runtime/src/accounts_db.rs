@@ -723,6 +723,7 @@ impl<'a> LoadedAccountAccessor<'a> {
     }
 }
 
+#[derive(Debug)]
 pub enum LoadedAccount<'a> {
     Stored(StoredAccountMeta<'a>),
     Cached(Cow<'a, CachedAccount>),
