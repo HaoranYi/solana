@@ -12,8 +12,9 @@ network performance and becomes a potential vulnerability of the network.
 To solve this problem and speed up the reward at epoch boundary, an earlier
 approach [Partitioned Inflationary Rewards
 Distribution](https://github.com/solana-labs/solana/blob/master/docs/src/proposals/partitioned-inflationary-rewards-distribution.md)
-is proposed. A prototype of this proposal is implemented. While this work solves
-the scalability of epoch rewards, it, however, has two main problems:
+is proposed. A prototype of this proposal is implemented. While this approach
+works and solves the scalability of epoch rewards, it, however, has two main
+drawbacks:
 
 1. Restrict updates to all stake accounts and vote account during reward
 interval. In the earlier approach, the stake accounts and vote accounts are locked
