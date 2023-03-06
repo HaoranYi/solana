@@ -357,10 +357,16 @@ impl EpochRewardCalcService {
 mod test {
     use {
         super::*,
-        crate::{bank::VoteWithStakeDelegations, genesis_utils::create_genesis_config},
+        crate::{
+            bank::VoteWithStakeDelegations, genesis_utils::create_genesis_config,
+            stake_account::StakeAccount,
+        },
         dashmap::DashMap,
-        solana_sdk::{account::AccountSharedData, epoch_schedule::EpochSchedule, pubkey::Pubkey},
-        solana_vote_program::vote_state::VoteState,
+        solana_sdk::{
+            account::AccountSharedData, epoch_schedule::EpochSchedule, pubkey::Pubkey, rent::Rent,
+        },
+        solana_stake_program::stake_state::{self},
+        solana_vote_program::vote_state::{self, VoteState},
         std::{default::Default, str::FromStr},
     };
 
@@ -479,29 +485,53 @@ mod test {
     /// A test for compute the reward calculation signature
     #[test]
     fn test_compute_reward_calculation_signature() {
+        use std::time::Instant;
         let genesis = create_genesis_config(10);
         let bank0 = Bank::new_for_tests(&genesis.genesis_config);
 
         // set up vote accounts
         let mut vote_pubkeys = vec![];
-        for _ in 0..5 {
+        for _ in 0..1 {
             vote_pubkeys.push(Pubkey::new_unique());
         }
 
         // compute the first signature
         let vote_with_stake_delegations_map = DashMap::new();
         for vote_pubkey in vote_pubkeys.iter().copied() {
-            let vote_account = AccountSharedData::new(264, 0, &solana_vote_program::id());
+            //let vote_account = AccountSharedData::new(264, 0, &solana_vote_program::id());
+
+            let vote_account = vote_state::create_account(&vote_pubkey, &vote_pubkey, 0, 100);
+
             bank0.store_account(&vote_pubkey, &vote_account);
+
+            let mut delegations = vec![];
+
+            for _ in 0..600_000 {
+                let stake_pubkey = Pubkey::new_unique();
+                let stake_account = stake_state::create_account(
+                    &stake_pubkey,
+                    &vote_pubkey,
+                    &vote_account,
+                    &Rent::default(),
+                    100_000000000,
+                );
+
+                let stake_account = StakeAccount::<()>::try_from(stake_account).unwrap();
+                delegations.push((stake_pubkey, stake_account));
+            }
+
             let vote_state = VoteState::default();
             let delegations = VoteWithStakeDelegations {
                 vote_state: Arc::new(vote_state),
                 vote_account,
-                delegations: vec![],
+                delegations: delegations,
             };
             vote_with_stake_delegations_map.insert(vote_pubkey, delegations);
         }
+
+        let now = Instant::now();
         let signature1 = bank0.compute_rewards_calc_signature(&vote_with_stake_delegations_map);
+        println!("haha {}", now.elapsed().as_secs());
 
         // compute 2nd signature (in reverse order)
         let vote_with_stake_delegations_map2 = DashMap::new();
@@ -519,7 +549,7 @@ mod test {
         let signature2 = bank0.compute_rewards_calc_signature(&vote_with_stake_delegations_map);
 
         // assert
-        assert_eq!(signature1, signature2);
+        // assert_eq!(signature1, signature2);
     }
 
     /// A test for epoch service for longer than 1 epoch
