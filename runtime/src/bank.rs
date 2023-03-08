@@ -3884,6 +3884,135 @@ impl Bank {
         (stake_rewards, vote_account_rewards)
     }
 
+    pub fn compute_rewards_calc_signature4(&self) {
+        let stakes = self.stakes_cache.stakes();
+        let votes = self.vote_accounts();
+        let stake_delegations = stakes
+            .stake_delegations()
+            .iter()
+            .sorted_by_key(|x| x.0)
+            .collect();
+    }
+
+    // parallelize compuation
+    pub fn compute_rewards_calc_signature3(
+        &self,
+        vote_with_stake_delegations_map: DashMap<Pubkey, VoteWithStakeDelegations>,
+        thread_pool: &ThreadPool,
+    ) -> Hash {
+        // compute individual vote/stake accounts hash
+        //let mut hashes: Vec<(Pubkey, Hash)> = Vec::new();
+
+        let hashes: Vec<(Pubkey, Hash)> = thread_pool.install(|| {
+            vote_with_stake_delegations_map
+                .into_par_iter()
+                .map(|x| {
+                    let mut hasher = Hasher::default();
+
+                    let vote_pubkey = x.0;
+                    let vote_delegation = x.1;
+                    let VoteWithStakeDelegations {
+                        vote_state,
+                        vote_account,
+                        delegations,
+                    } = vote_delegation;
+
+                    // compute vote account hash
+                    let vote_state_data = serialize(&vote_state).unwrap();
+                    let vote_hash = crate::accounts_db::AccountsDb::hash_account_state(
+                        &vote_state_data[..],
+                        &vote_account,
+                        &vote_pubkey,
+                    );
+                    hasher.update(vote_hash.as_ref());
+
+                    // compute delegation stake account hash (sorted by stake_pubkeys)
+                    for (stake_pubkey, stake_account) in delegations.iter().sorted_by_key(|x| x.0) {
+                        let stake_state_data = serialize(stake_account.stake_state()).unwrap();
+                        let hash = crate::accounts_db::AccountsDb::hash_account_state(
+                            &stake_state_data[..],
+                            stake_account.account(),
+                            stake_pubkey,
+                        );
+                        hasher.update(hash.as_ref());
+                    }
+
+                    let hash = crate::accounts_db::AccountsDb::to_hash(hasher);
+                    // hashes.push((*vote_pubkey, hash));
+                    (vote_pubkey, hash)
+                })
+                .collect()
+        });
+
+        // compute final hash (sorted by vote_pubkeys)
+        let mut hasher = Hasher::default();
+        for (_key, hash) in hashes.iter().sorted_by_key(|x| x.0) {
+            hasher.update(hash.as_ref());
+        }
+        let result = crate::accounts_db::AccountsDb::to_hash(hasher);
+        info!(
+            "rewards_calc_request_signature: {}, slot {}",
+            result,
+            self.slot()
+        );
+        result
+    }
+
+    /// Compute reward calculation signature from all delegated stake accounts
+    pub fn compute_rewards_calc_signature2(
+        &self,
+        vote_with_stake_delegations_map: DashMap<Pubkey, VoteWithStakeDelegations>,
+    ) -> Hash {
+        let hasher = Hasher::default();
+
+        // iterate by sorted vote_pubkey
+        vote_with_stake_delegations_map
+            .iter()
+            .sorted_by_key(|x| *x.key())
+            .for_each(|x| {
+                let mut hasher = Hasher::default();
+
+                let vote_pubkey = x.key();
+                let vote_delegation = x.value();
+                let VoteWithStakeDelegations {
+                    vote_state,
+                    vote_account,
+                    delegations,
+                } = vote_delegation;
+
+                // compute vote account hash
+                let vote_state_data = serialize(vote_state).unwrap();
+                let vote_hash = crate::accounts_db::AccountsDb::hash_account_state(
+                    &vote_state_data[..],
+                    vote_account,
+                    vote_pubkey,
+                );
+                hasher.update(vote_hash.as_ref());
+
+                // compute delegation stake account hash (sorted by stake_pubkeys)
+                for (stake_pubkey, stake_account) in delegations.iter().sorted_by_key(|x| x.0) {
+                    let stake_state_data = serialize(stake_account.stake_state()).unwrap();
+                    let hash = crate::accounts_db::AccountsDb::hash_account_state(
+                        &stake_state_data[..],
+                        stake_account.account(),
+                        stake_pubkey,
+                    );
+                    hasher.update(hash.as_ref());
+                }
+            });
+
+        let result = crate::accounts_db::AccountsDb::to_hash(hasher);
+        info!(
+            "rewards_calc_request_signature: {}, slot {}",
+            result,
+            self.slot()
+        );
+        result
+    }
+
+    /// Compute reward calculation signature from vote accounts and stake accounts
+    /// First, individual hash is computed from a vote_account and all of its delegated stake
+    /// accounts. Then, a final hash is computed from all the vote_account individual hashes.
     pub fn compute_rewards_calc_signature(
         &self,
         vote_with_stake_delegations_map: &DashMap<Pubkey, VoteWithStakeDelegations>,
