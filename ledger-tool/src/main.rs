@@ -1412,8 +1412,8 @@ struct AddAccountsDbSubCommandArgHelper<'a, 'b> {
 impl<'a, 'b> AddAccountsDbSubCommandArgHelper<'a, 'b> {
     fn add(&self, cmd: App<'a, 'b>) -> App<'a, 'b> {
         cmd.arg(self.accounts_index_bins)
-        .arg(self.accounts_index_limit)
-        .arg(self.disable_disk_index)
+            .arg(self.accounts_index_limit)
+            .arg(self.disable_disk_index)
     }
 }
 
@@ -1918,9 +1918,6 @@ fn main() {
             .arg(&accounts_index_path_arg)
             .arg(&halt_at_slot_arg)
             .arg(&limit_load_slot_count_from_snapshot_arg)
-            //.arg(&accounts_index_bins)
-            //.arg(&accounts_index_limit)
-            //.arg(&disable_disk_index)
             .arg(&accountsdb_skip_shrink)
             .arg(&accountsdb_verify_refcounts)
             .arg(&accounts_filler_count)
@@ -1948,9 +1945,7 @@ fn main() {
                     .long("print-accounts-stats")
                     .takes_value(false)
                     .help("After verifying the ledger, print some information about the account stores"),
-            //), &accounts_index_bins)
     ))
-    
         ).subcommand(
             SubCommand::with_name("graph")
             .about("Create a Graphviz rendering of the ledger")
