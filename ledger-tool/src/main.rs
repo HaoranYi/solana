@@ -1403,6 +1403,25 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+// macro_rules! add_common_command_args {
+//     ($cmd:ident) => {
+//         $cmd.arg(&accounts_index_bins)
+//             .arg(&accounts_index_limit)
+//             .arg(&disable_disk_index)
+//     };
+// }
+//
+//
+struct AddCmd<'a, 'b> {
+    accounts_index_bins: &'a Arg<'a, 'b>,
+}
+
+impl<'a, 'b> AddCmd<'a, 'b> {
+    fn add(&self, cmd: App<'a, 'b>) -> App<'a, 'b> {
+        cmd.arg(self.accounts_index_bins)
+    }
+}
+
 #[allow(clippy::cognitive_complexity)]
 fn main() {
     // Ignore SIGUSR1 to prevent long-running calls being killed by logrotate
@@ -1628,6 +1647,20 @@ fn main() {
     let default_graph_vote_account_mode = GraphVoteAccountMode::default();
 
     let mut measure_total_execution_time = Measure::start("ledger tool");
+
+    // let add_common_accounts_db_subcommand_args = |cmd: App| {
+    //     cmd.arg(&accounts_index_bins)
+    //         .arg(&accounts_index_limit)
+    //         .arg(&disable_disk_index)
+    // };
+
+    //fn add_cmd_args<'a, 'b>(cmd: App<'a, 'b>, accounts_index_bins: &Arg<'a, 'b>) -> App<'a, 'b> {
+    //    cmd.arg(accounts_index_bins)
+    //}
+
+    let aaa = AddCmd {
+        accounts_index_bins: &accounts_index_bins,
+    };
 
     let matches = App::new(crate_name!())
         .about(crate_description!())
@@ -1890,6 +1923,9 @@ fn main() {
             .arg(&allow_dead_slots_arg)
         )
         .subcommand(
+                 //add_common_accounts_db_subcommand_args(
+                 //add_cmd_args(
+                 aaa.add(
             SubCommand::with_name("verify")
             .about("Verify the ledger")
             .arg(&no_snapshot_arg)
@@ -1897,7 +1933,7 @@ fn main() {
             .arg(&accounts_index_path_arg)
             .arg(&halt_at_slot_arg)
             .arg(&limit_load_slot_count_from_snapshot_arg)
-            .arg(&accounts_index_bins)
+            //.arg(&accounts_index_bins)
             .arg(&accounts_index_limit)
             .arg(&disable_disk_index)
             .arg(&accountsdb_skip_shrink)
@@ -1927,7 +1963,9 @@ fn main() {
                     .long("print-accounts-stats")
                     .takes_value(false)
                     .help("After verifying the ledger, print some information about the account stores"),
-            )
+            //), &accounts_index_bins)
+    ))
+    
         ).subcommand(
             SubCommand::with_name("graph")
             .about("Create a Graphviz rendering of the ledger")
