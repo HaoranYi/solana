@@ -1403,22 +1403,17 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-// macro_rules! add_common_command_args {
-//     ($cmd:ident) => {
-//         $cmd.arg(&accounts_index_bins)
-//             .arg(&accounts_index_limit)
-//             .arg(&disable_disk_index)
-//     };
-// }
-//
-//
-struct AddCmd<'a, 'b> {
+struct AddAccountsDbSubCommandArgHelper<'a, 'b> {
     accounts_index_bins: &'a Arg<'a, 'b>,
+    accounts_index_limit: &'a Arg<'a, 'b>,
+    disable_disk_index: &'a Arg<'a, 'b>,
 }
 
-impl<'a, 'b> AddCmd<'a, 'b> {
+impl<'a, 'b> AddAccountsDbSubCommandArgHelper<'a, 'b> {
     fn add(&self, cmd: App<'a, 'b>) -> App<'a, 'b> {
         cmd.arg(self.accounts_index_bins)
+        .arg(self.accounts_index_limit)
+        .arg(self.disable_disk_index)
     }
 }
 
@@ -1648,18 +1643,10 @@ fn main() {
 
     let mut measure_total_execution_time = Measure::start("ledger tool");
 
-    // let add_common_accounts_db_subcommand_args = |cmd: App| {
-    //     cmd.arg(&accounts_index_bins)
-    //         .arg(&accounts_index_limit)
-    //         .arg(&disable_disk_index)
-    // };
-
-    //fn add_cmd_args<'a, 'b>(cmd: App<'a, 'b>, accounts_index_bins: &Arg<'a, 'b>) -> App<'a, 'b> {
-    //    cmd.arg(accounts_index_bins)
-    //}
-
-    let aaa = AddCmd {
+    let arg_helper = AddAccountsDbSubCommandArgHelper {
         accounts_index_bins: &accounts_index_bins,
+        accounts_index_limit: &accounts_index_limit,
+        disable_disk_index: &disable_disk_index,
     };
 
     let matches = App::new(crate_name!())
@@ -1923,9 +1910,7 @@ fn main() {
             .arg(&allow_dead_slots_arg)
         )
         .subcommand(
-                 //add_common_accounts_db_subcommand_args(
-                 //add_cmd_args(
-                 aaa.add(
+             arg_helper.add(
             SubCommand::with_name("verify")
             .about("Verify the ledger")
             .arg(&no_snapshot_arg)
@@ -1934,8 +1919,8 @@ fn main() {
             .arg(&halt_at_slot_arg)
             .arg(&limit_load_slot_count_from_snapshot_arg)
             //.arg(&accounts_index_bins)
-            .arg(&accounts_index_limit)
-            .arg(&disable_disk_index)
+            //.arg(&accounts_index_limit)
+            //.arg(&disable_disk_index)
             .arg(&accountsdb_skip_shrink)
             .arg(&accountsdb_verify_refcounts)
             .arg(&accounts_filler_count)
