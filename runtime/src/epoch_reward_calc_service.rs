@@ -552,6 +552,43 @@ mod test {
         // assert_eq!(signature1, signature2);
     }
 
+    #[test]
+    fn test_compute_hash_bench() {
+        use std::time::Instant;
+        let genesis = create_genesis_config(10);
+        let bank0 = Bank::new_for_tests(&genesis.genesis_config);
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        // set up vote accounts
+        let mut vote_pubkeys = vec![];
+        for _ in 0..1 {
+            vote_pubkeys.push(Pubkey::new_unique());
+        }
+
+        // compute the first signature
+        let mut hashes = vec![];
+        for vote_pubkey in vote_pubkeys.iter().copied() {
+            //let vote_account = AccountSharedData::new(264, 0, &solana_vote_program::id());
+
+            let vote_account = vote_state::create_account(&vote_pubkey, &vote_pubkey, 0, 100);
+
+            bank0.store_account(&vote_pubkey, &vote_account);
+
+            for _ in 0..600_000 {
+                let stake_pubkey = Pubkey::new_unique();
+
+                let lamports = rng.gen_range(1, 1000000);
+                hashes.push((stake_pubkey, lamports));
+            }
+        }
+
+        let now = Instant::now();
+        let r = bank0.compute_hash_bench(&hashes);
+        println!("haha {} {}", r, now.elapsed().as_millis());
+    }
+
     /// A test for epoch service for longer than 1 epoch
     #[test]
     fn test_epoch_reward_service_long() {
