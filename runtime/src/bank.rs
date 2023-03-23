@@ -4078,6 +4078,16 @@ impl Bank {
         crate::accounts_db::AccountsDb::to_hash(hasher)
     }
 
+    pub fn sort_hash_bench(&self, x: &mut Vec<(Pubkey, Hash, u64)>) {
+        // x.sort_by(|a, b| {
+        //     let k1 = hashv(&[a.0.as_ref(), &[42]]);
+        //     let k2 = hashv(&[b.0.as_ref(), &[42]]);
+        //     k1.partial_cmp(&k2).unwrap()
+        // });
+
+        x.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+    }
+
     fn update_recent_blockhashes_locked(&self, locked_blockhash_queue: &BlockhashQueue) {
         #[allow(deprecated)]
         self.update_sysvar_account(&sysvar::recent_blockhashes::id(), |account| {

@@ -9,7 +9,11 @@ use {
     log::*,
     rayon::ThreadPoolBuilder,
     solana_measure::{measure, measure::Measure},
-    solana_sdk::{clock::Slot, hash::Hash, stake_history::Epoch},
+    solana_sdk::{
+        clock::Slot,
+        hash::{hashv, Hash},
+        stake_history::Epoch,
+    },
     std::{
         collections::HashMap,
         fmt::Debug,
@@ -578,15 +582,26 @@ mod test {
 
             for _ in 0..600_000 {
                 let stake_pubkey = Pubkey::new_unique();
+                //let stake_pubkey = Pubkey::new_rand();
+
+                // First compute the hash in the struct the sort by field. if use sort_by lambda
+                // the compuate, the compute will be repeated  everytime, then it take too long to
+                // recompute the hash.
+                let k = hashv(&[stake_pubkey.as_ref(), &[42]]);
 
                 let lamports = rng.gen_range(1, 1000000);
-                hashes.push((stake_pubkey, lamports));
+                hashes.push((stake_pubkey, k, lamports));
             }
         }
-
+        println!("pre: {:?}, {:?}", hashes[0], hashes[1]);
         let now = Instant::now();
-        let r = bank0.compute_hash_bench(&hashes);
-        println!("haha {} {}", r, now.elapsed().as_millis());
+        bank0.sort_hash_bench(&mut hashes);
+        println!("haha {}", now.elapsed().as_millis());
+        println!("post: {:?}, {:?}", hashes[0], hashes[1]);
+
+        //let now = Instant::now();
+        //let r = bank0.compute_hash_bench(&hashes);
+        //println!("haha {} {}", r, now.elapsed().as_millis());
     }
 
     /// A test for epoch service for longer than 1 epoch
