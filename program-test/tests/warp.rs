@@ -245,7 +245,7 @@ async fn stake_rewards_from_warp() {
     // go forward and see that rewards have been distributed
     let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
     context
-        .warp_to_slot(first_normal_slot + slots_per_epoch)
+        .warp_to_slot(first_normal_slot + slots_per_epoch + 1) // when partitioned rewards are enabled, the rewards are paid at 1 slot after the first slot of the epoch
         .unwrap();
 
     let account = context
@@ -350,7 +350,7 @@ async fn stake_rewards_filter_bench_core(num_stake_accounts: u64) {
     // go forward and see that rewards have been distributed
     let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
     context
-        .warp_to_slot(first_normal_slot + slots_per_epoch)
+        .warp_to_slot(first_normal_slot + slots_per_epoch + 1) // when partitioned rewards are enabled, the rewards are paid at 1 slot after the first slot of the epoch
         .unwrap();
 
     let account = context

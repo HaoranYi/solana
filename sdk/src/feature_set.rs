@@ -912,12 +912,10 @@ impl FeatureSet {
 
     /// All features enabled, useful for testing
     pub fn all_enabled() -> Self {
-        let mut feature = Self {
+        Self {
             active: FEATURE_NAMES.keys().cloned().map(|key| (key, 0)).collect(),
             inactive: HashSet::new(),
-        };
-        feature.deactivate(&enable_partitioned_epoch_reward::id());
-        feature
+        }
     }
 
     /// Activate a feature

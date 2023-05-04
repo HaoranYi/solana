@@ -12657,10 +12657,9 @@ fn test_partitioned_reward_enable() {
     assert!(!bank.partitioned_rewards_feature_enabled());
 }
 
-/// Test that parition begin/end covers the whole index range
+/// Test that parition range
 #[test]
-#[should_panic]
-fn test_get_epoch_reward_partition_begin_end() {
+fn test_get_epoch_reward_partition_range() {
     let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
     let bank = Bank::new_for_tests(&genesis_config);
 
@@ -12668,8 +12667,17 @@ fn test_get_epoch_reward_partition_begin_end() {
     let range = bank.get_partition_range(0, n);
     assert_eq!(range.start, 0);
     assert_eq!(range.end, 4096);
+}
+
+/// Test that parition range panic
+#[test]
+#[should_panic]
+fn test_get_epoch_reward_partition_range_panic() {
+    let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    let bank = Bank::new_for_tests(&genesis_config);
 
     // This call should panic
+    let n: u64 = 65312;
     let _range = bank.get_partition_range(15, n);
 }
 
