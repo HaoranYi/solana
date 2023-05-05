@@ -29,14 +29,26 @@ use {
     std::sync::Arc,
 };
 
-fn next_epoch(bank: &Arc<Bank>) -> Arc<Bank> {
+fn next_epoch_and_n_slots(bank: &Arc<Bank>, n: usize) -> Arc<Bank> {
     bank.squash();
-
-    Arc::new(Bank::new_from_parent(
+    let mut bank = Arc::new(Bank::new_from_parent(
         bank,
         &Pubkey::default(),
         bank.get_slots_in_epoch(bank.epoch()) + bank.slot(),
-    ))
+    ));
+
+    let mut n = n;
+    while n > 0 {
+        bank.squash();
+        bank = Arc::new(Bank::new_from_parent(
+            &bank,
+            &Pubkey::default(),
+            1 + bank.slot(),
+        ));
+        n = n - 1;
+    }
+
+    bank
 }
 
 fn fill_epoch_with_votes(
@@ -264,6 +276,8 @@ fn test_stake_create_and_split_to_existing_system_account() {
 
 #[test]
 fn test_stake_account_lifetime() {
+    //solana_logger::setup();
+
     let stake_keypair = Keypair::new();
     let stake_pubkey = stake_keypair.pubkey();
     let vote_keypair = Keypair::new();
@@ -282,6 +296,7 @@ fn test_stake_account_lifetime() {
     );
     genesis_config.rent = Rent::default();
     let bank = Bank::new_for_tests(&genesis_config);
+
     let mint_pubkey = mint_keypair.pubkey();
     let mut bank = Arc::new(bank);
     // Need to set the EAH to Valid so that `Bank::new_from_parent()` doesn't panic during freeze
@@ -385,7 +400,7 @@ fn test_stake_account_lifetime() {
             break;
         }
         // Cycle thru banks until we're fully warmed up
-        bank = next_epoch(&bank);
+        bank = next_epoch_and_n_slots(&bank, 0);
     }
 
     // Reward redemption
@@ -409,7 +424,7 @@ fn test_stake_account_lifetime() {
     let pre_balance = bank.get_balance(&stake_pubkey);
 
     // next epoch bank should pay rewards
-    bank = next_epoch(&bank);
+    bank = next_epoch_and_n_slots(&bank, 2);
 
     // Test that balance increased, and that the balance got staked
     let staked = get_staked(&bank, &stake_pubkey);
@@ -477,7 +492,8 @@ fn test_stake_account_lifetime() {
         .send_and_confirm_message(&[&mint_keypair, &stake_keypair], message)
         .is_err());
 
-    let mut bank = next_epoch(&bank);
+    let mut bank = next_epoch_and_n_slots(&bank, 2);
+
     let bank_client = BankClient::new_shared(&bank);
 
     // assert we're still cooling down
@@ -522,7 +538,7 @@ fn test_stake_account_lifetime() {
         if get_staked(&bank, &split_stake_pubkey) == 0 {
             break;
         }
-        bank = next_epoch(&bank);
+        bank = next_epoch_and_n_slots(&bank, 2);
     }
     let bank_client = BankClient::new_shared(&bank);
 
