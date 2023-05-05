@@ -877,7 +877,7 @@ impl AbiExample for OptionalDropCallback {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(AbiExample, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StartSlotBlockHeightAndRewards {
     /// the slot of the parent of the slot at which rewards distribution began
     /// only used for metrics
@@ -889,7 +889,7 @@ pub struct StartSlotBlockHeightAndRewards {
 }
 
 /// Represent whether bank is in the reward phase or not.
-#[derive(AbiExample, Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(AbiExample, AbiEnumVisitor, Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum EpochRewardStatus {
     /// this bank is in the reward phase.
     /// Contents are the start point for epoch reward calculation,
