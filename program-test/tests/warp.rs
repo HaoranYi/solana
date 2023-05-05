@@ -425,8 +425,9 @@ async fn stake_merge_immediately_after_activation() {
 
     let first_normal_slot = context.genesis_config().epoch_schedule.first_normal_slot;
     let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
-    let mut current_slot = first_normal_slot + slots_per_epoch + 2;
+    let mut current_slot = first_normal_slot + slots_per_epoch;
     context.warp_to_slot(current_slot).unwrap();
+    context.force_reward_interval_end().unwrap();
 
     // this is annoying, but if no stake has earned rewards, the bank won't
     // iterate through the stakes at all, which means we can only test the
@@ -442,6 +443,7 @@ async fn stake_merge_immediately_after_activation() {
 
     current_slot += slots_per_epoch;
     context.warp_to_slot(current_slot).unwrap();
+    context.force_reward_interval_end().unwrap();
 
     // make another stake which will just have its credits observed advanced
     let absorbed_stake_address =
@@ -454,6 +456,7 @@ async fn stake_merge_immediately_after_activation() {
     context.increment_vote_account_credits(&vote_address, 100);
     current_slot += slots_per_epoch;
     context.warp_to_slot(current_slot).unwrap();
+    context.force_reward_interval_end().unwrap();
 
     // check that base stake has earned rewards and credits moved forward
     let stake_account = context

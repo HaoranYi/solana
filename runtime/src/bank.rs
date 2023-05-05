@@ -1546,6 +1546,11 @@ impl Bank {
         self.epoch_reward_status.is_active()
     }
 
+    // For testing only
+    pub fn force_reward_interval_end_for_test(&mut self) {
+        self.epoch_reward_status = EpochRewardStatus::Inactive;
+    }
+
     fn _new_from_parent(
         parent: &Arc<Bank>,
         collector_id: &Pubkey,

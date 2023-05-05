@@ -45,7 +45,7 @@ fn next_epoch_and_n_slots(bank: &Arc<Bank>, n: usize) -> Arc<Bank> {
             &Pubkey::default(),
             1 + bank.slot(),
         ));
-        n = n - 1;
+        n -= 1;
     }
 
     bank
