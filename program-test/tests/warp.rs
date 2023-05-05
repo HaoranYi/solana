@@ -425,7 +425,7 @@ async fn stake_merge_immediately_after_activation() {
 
     let first_normal_slot = context.genesis_config().epoch_schedule.first_normal_slot;
     let slots_per_epoch = context.genesis_config().epoch_schedule.slots_per_epoch;
-    let mut current_slot = first_normal_slot + slots_per_epoch;
+    let mut current_slot = first_normal_slot + slots_per_epoch + 2;
     context.warp_to_slot(current_slot).unwrap();
 
     // this is annoying, but if no stake has earned rewards, the bank won't
