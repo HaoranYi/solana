@@ -12657,19 +12657,19 @@ fn test_partitioned_reward_enable() {
     assert!(!bank.partitioned_rewards_feature_enabled());
 }
 
-/// Test that parition range
+/// Test partition range
 #[test]
 fn test_get_epoch_reward_partition_range() {
     let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
     let bank = Bank::new_for_tests(&genesis_config);
 
-    let n: u64 = 65312;
+    let n = 65312;
     let range = bank.get_partition_range(0, n);
     assert_eq!(range.start, 0);
     assert_eq!(range.end, 4096);
 }
 
-/// Test that parition range panic
+/// Test that partition range panics
 #[test]
 #[should_panic]
 fn test_get_epoch_reward_partition_range_panic() {
@@ -12677,7 +12677,7 @@ fn test_get_epoch_reward_partition_range_panic() {
     let bank = Bank::new_for_tests(&genesis_config);
 
     // This call should panic
-    let n: u64 = 65312;
+    let n = 65312;
     let _range = bank.get_partition_range(15, n);
 }
 
@@ -12708,13 +12708,14 @@ fn test_epoch_credit_rewards() {
     let mut total_rewards = 0;
 
     for partition_index in 0..bank.get_reward_credit_num_blocks() {
+        let stake_rewards =
+            &stake_rewards[bank.get_partition_range(partition_index, stake_rewards.len())];
         let DistributedRewardsSum {
             num_rewards: num_accounts,
             total_rewards_in_lamports: rewards,
-        } = bank.store_stake_accounts_in_partition(&stake_rewards, partition_index);
+        } = bank.store_stake_accounts_in_partition(stake_rewards);
 
-        let num_in_history =
-            bank.update_reward_history_in_partition(&stake_rewards, partition_index);
+        let num_in_history = bank.update_reward_history_in_partition(stake_rewards);
         assert_eq!(num_accounts, num_in_history);
         total_num += num_accounts;
         total_rewards += rewards;

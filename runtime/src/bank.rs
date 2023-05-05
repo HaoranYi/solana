@@ -1886,7 +1886,7 @@ impl Bank {
     fn distribute_epoch_rewards(&mut self) {
         if let EpochRewardStatus::Active(status) = self.epoch_reward_status.to_owned() {
             let height = self.block_height();
-            // + 1 because start_block_height is the parent block of the current epoch.
+            // + 1 because parent_start_block_height is the parent block of the current epoch.
             let credit_start =
                 status.parent_start_block_height + Self::REWARD_CALCULATION_NUM_BLOCKS + 1;
             let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
@@ -2593,7 +2593,7 @@ impl Bank {
             stake_rewards,
             total_rewards: total_stake_rewards,
         } = self
-            .do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool_no_join(
+            .do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool(
                 prev_epoch,
                 validator_rewards,
                 reward_calc_tracer,
@@ -3098,7 +3098,7 @@ impl Bank {
 
     /// Calculate epoch reward and payout vote rewards (optimized with cache and no-join of vote/stake accounts)
     /// Returns rewards for stake accounts and total reward distribute for vote accounts
-    fn do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool_no_join(
+    fn do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool(
         &mut self,
         rewarded_epoch: Epoch,
         rewards: u64,
@@ -3489,42 +3489,41 @@ impl Bank {
                 .collect()
         }));
 
-        let vote_rewards = thread_pool
-            .install(|| {
-                vote_account_rewards.into_iter().map(
-                    |(
-                        vote_pubkey,
-                        VoteReward {
-                            mut vote_account,
-                            commission,
-                            vote_rewards,
-                            vote_needs_store,
-                        },
-                    )| {
-                        if let Err(err) = vote_account.checked_add_lamports(vote_rewards) {
-                            debug!("reward redemption failed for {}: {:?}", vote_pubkey, err);
-                            return (None, None);
-                        }
-
-                        (
-                            Some((
-                                vote_pubkey,
-                                RewardInfo {
-                                    reward_type: RewardType::Voting,
-                                    lamports: vote_rewards as i64,
-                                    post_balance: vote_account.lamports(),
-                                    commission: Some(commission),
-                                },
-                            )),
-                            if vote_needs_store {
-                                Some((vote_pubkey, vote_account))
-                            } else {
-                                None
-                            },
-                        )
+        let vote_rewards = vote_account_rewards
+            .into_iter()
+            .map(
+                |(
+                    vote_pubkey,
+                    VoteReward {
+                        mut vote_account,
+                        commission,
+                        vote_rewards,
+                        vote_needs_store,
                     },
-                )
-            })
+                )| {
+                    if let Err(err) = vote_account.checked_add_lamports(vote_rewards) {
+                        debug!("reward redemption failed for {}: {:?}", vote_pubkey, err);
+                        return (None, None);
+                    }
+
+                    (
+                        Some((
+                            vote_pubkey,
+                            RewardInfo {
+                                reward_type: RewardType::Voting,
+                                lamports: vote_rewards as i64,
+                                post_balance: vote_account.lamports(),
+                                commission: Some(commission),
+                            },
+                        )),
+                        if vote_needs_store {
+                            Some((vote_pubkey, vote_account))
+                        } else {
+                            None
+                        },
+                    )
+                },
+            )
             .collect::<Vec<_>>();
 
         metrics.redeem_rewards_us += measure.as_us();
@@ -3651,11 +3650,11 @@ impl Bank {
     }
 
     /// Return the reward partition range
-    fn get_partition_range(&self, partition_index: u64, stake_rewards_len: u64) -> Range<usize> {
+    fn get_partition_range(&self, partition_index: u64, stake_rewards_len: usize) -> Range<usize> {
         assert!(partition_index < self.get_reward_credit_num_blocks());
         let begin = Self::PARTITION_REWARDS_STORES_PER_BLOCK * partition_index;
         let end_exclusive =
-            (begin + Self::PARTITION_REWARDS_STORES_PER_BLOCK).min(stake_rewards_len);
+            (begin + Self::PARTITION_REWARDS_STORES_PER_BLOCK).min(stake_rewards_len as u64);
         (begin as usize)..(end_exclusive as usize)
     }
 
@@ -3667,12 +3666,8 @@ impl Bank {
     fn store_stake_accounts_in_partition(
         &self,
         stake_rewards: &[StakeReward],
-        partition_index: u64,
     ) -> DistributedRewardsSum {
-        let n = stake_rewards.len() as u64;
         let mut total: i64 = 0;
-        let range = self.get_partition_range(partition_index, n);
-
         // Verify that stake account `lamports + reward_amount` matches what we have in the
         // rewarded account. This code will have a performance hit -  an extra load and compare of
         // the stake accounts. This is for debugging. Once we are confident, we can disable the
@@ -3681,7 +3676,7 @@ impl Bank {
         const VERIFY_REWARD_LAMPORT: bool = true;
 
         if VERIFY_REWARD_LAMPORT {
-            for r in &stake_rewards[range.clone()] {
+            for r in stake_rewards {
                 let stake_pubkey = r.stake_pubkey;
                 let reward_amount = r.get_stake_reward();
                 let post_stake_account = r.get_stake_account();
@@ -3700,17 +3695,13 @@ impl Bank {
             }
         }
 
-        self.store_accounts((
-            self.slot(),
-            &stake_rewards[range.clone()],
-            self.include_slot_in_hash(),
-        ));
-        for a in &stake_rewards[range.clone()] {
+        self.store_accounts((self.slot(), stake_rewards, self.include_slot_in_hash()));
+        for a in stake_rewards {
             total += a.stake_reward_info.lamports;
         }
 
         DistributedRewardsSum {
-            num_rewards: range.len(),
+            num_rewards: stake_rewards.len(),
             total_rewards_in_lamports: total,
         }
     }
@@ -3725,7 +3716,8 @@ impl Bank {
                 vote_account_rewards.into_iter().unzip();
 
             let vote_rewards: Vec<_> = vote_rewards.into_iter().flatten().collect();
-            let vote_accounts: Vec<_> = vote_accounts.iter().flatten().collect();
+            let vote_accounts: Vec<&(Pubkey, AccountSharedData)> =
+                vote_accounts.iter().flatten().collect();
 
             self.store_accounts((self.slot(), &vote_accounts[..], self.include_slot_in_hash()));
             vote_rewards
@@ -3799,23 +3791,15 @@ impl Bank {
             .for_each(|x| rewards.push((x.stake_pubkey, x.stake_reward_info)));
     }
 
-    /// Update reward history record for the partition
-    ///     - stake_rewards: stake reward vector
-    ///     - partition_index: reward partition index
-    /// Return the number of inserted reward to the reward history
-    fn update_reward_history_in_partition(
-        &self,
-        stake_rewards: &[StakeReward],
-        partition_index: u64,
-    ) -> usize {
+    /// insert non-zero stake rewards to self.rewards
+    /// Return the number of rewards inserted
+    fn update_reward_history_in_partition(&self, stake_rewards: &[StakeReward]) -> usize {
         let mut rewards = self.rewards.write().unwrap();
-
-        let n = stake_rewards.len() as u64;
-        let range = self.get_partition_range(partition_index, n);
+        rewards.reserve(stake_rewards.len());
         let mut num_stake_rewards: usize = 0;
-        for x in &stake_rewards[range] {
-            if x.get_stake_reward() > 0 {
-                rewards.push((x.stake_pubkey, x.stake_reward_info));
+        for stake_reward in stake_rewards {
+            if stake_reward.get_stake_reward() > 0 {
+                rewards.push((stake_reward.stake_pubkey, stake_reward.stake_reward_info));
                 num_stake_rewards += 1;
             }
         }
@@ -3840,6 +3824,9 @@ impl Bank {
                 ..RewardsStoreMetrics::default()
             };
 
+            let this_partition_stake_rewards =
+                &stake_rewards[self.get_partition_range(partition_index, stake_rewards.len())];
+
             let (
                 DistributedRewardsSum {
                     num_rewards: stake_store_counts,
@@ -3847,13 +3834,13 @@ impl Bank {
                 },
                 measure,
             ) = measure!(
-                self.store_stake_accounts_in_partition(stake_rewards, partition_index),
+                self.store_stake_accounts_in_partition(this_partition_stake_rewards),
                 "store_stake_account_in_partition"
             );
             metrics.store_stake_accounts_us += measure.as_us();
             metrics.store_stake_accounts_count += stake_store_counts;
 
-            self.update_reward_history_in_partition(stake_rewards, partition_index);
+            self.update_reward_history_in_partition(this_partition_stake_rewards);
 
             let validator_rewards_paid: u64 = u64::try_from(total_stake_rewards).unwrap();
             self.capitalization
