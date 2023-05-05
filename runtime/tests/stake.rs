@@ -276,8 +276,6 @@ fn test_stake_create_and_split_to_existing_system_account() {
 
 #[test]
 fn test_stake_account_lifetime() {
-    //solana_logger::setup();
-
     let stake_keypair = Keypair::new();
     let stake_pubkey = stake_keypair.pubkey();
     let vote_keypair = Keypair::new();
