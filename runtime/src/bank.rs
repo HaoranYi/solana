@@ -1884,7 +1884,7 @@ impl Bank {
         let credit_start = parent_slot + Self::REWARD_CALCULATION_NUM_BLOCKS + 1;
         let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
 
-        // TODO: update sysvar with (_total_rewards, _distributed_rewards, credit_end_exclusive)
+        // TODO: update sysvar with (total_rewards, distributed_rewards, credit_end_exclusive)
         info!("EpochRewards Start: {total_rewards} {distributed_rewards} {credit_end_exclusive}");
     }
 
@@ -3118,7 +3118,7 @@ impl Bank {
             self.calculate_reward_points2(&reward_calculate_param, rewards, thread_pool, metrics);
 
         if let Some(point_value) = point_value {
-            let (vote_account_rewards, mut stake_rewards) = self.redeem_rewards2(
+            let (vote_account_rewards, mut stake_rewards) = self.calculate_stake_vote_rewards(
                 &reward_calculate_param,
                 rewarded_epoch,
                 point_value,
@@ -3373,7 +3373,7 @@ impl Bank {
     /// * metrics: reward metrics
     ///
     /// Returns vote rewards and stake rewards
-    fn redeem_rewards2(
+    fn calculate_stake_vote_rewards(
         &self,
         reward_calculate_params: &EpochRewardCalculateParamInfo,
         rewarded_epoch: Epoch,
@@ -3400,7 +3400,7 @@ impl Bank {
         };
 
         let vote_account_rewards: VoteRewards = DashMap::new();
-        let (stake_rewards, measure_us) = measure_us!(thread_pool.install(|| {
+        let (stake_rewards, measure_stake_rewards_us) = measure_us!(thread_pool.install(|| {
             stake_delegations
                 .par_iter()
                 .filter_map(|(stake_pubkey, stake_account)| {
@@ -3493,9 +3493,14 @@ impl Bank {
                 .collect()
         }));
         // jwash: should this include calc_vote_rewards, too?
-        metrics.redeem_rewards_us += measure_us;
+        // Yes, I think so. Original metrics of redeem_rewards_us include both stake_rewards and vote_rewards.
 
-        (Self::calc_vote_rewards(vote_account_rewards), stake_rewards)
+        let (vote_rewards, measure_vote_rewards_us) =
+            measure_us!(Self::calc_vote_rewards(vote_account_rewards));
+
+        metrics.redeem_rewards_us += measure_stake_rewards_us + measure_vote_rewards_us;
+
+        (vote_rewards, stake_rewards)
     }
 
     fn calc_vote_rewards(vote_account_rewards: DashMap<Pubkey, VoteReward>) -> VoteRewardsAccounts {
