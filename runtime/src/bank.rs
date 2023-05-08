@@ -878,10 +878,7 @@ impl AbiExample for OptionalDropCallback {
 }
 
 #[derive(AbiExample, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StartSlotBlockHeightAndRewards {
-    /// the slot of the parent of the slot at which rewards distribution began
-    /// only used for metrics
-    parent_start_slot: Slot,
+pub struct StartBlockHeightAndRewards {
     /// the block height of the parent of the slot at which rewards distribution began
     parent_start_block_height: u64,
     /// calculated epoch rewards pending distribution
@@ -895,16 +892,10 @@ pub enum EpochRewardStatus {
     /// Contents are the start point for epoch reward calculation,
     /// i.e. parent_slot and parent_block height for the starting
     /// block of the current epoch.
-    Active(StartSlotBlockHeightAndRewards),
+    Active(StartBlockHeightAndRewards),
     /// this bank is outside of the rewarding phase.
     #[default]
     Inactive,
-}
-
-impl EpochRewardStatus {
-    fn is_active(&self) -> bool {
-        matches!(self, EpochRewardStatus::Active(_))
-    }
 }
 
 /// Manager for the state of all accounts and programs after processing its entries.
@@ -1493,7 +1484,6 @@ impl Bank {
             .is_active(&enable_partitioned_epoch_reward::id())
     }
 
-    // For testing only
     #[cfg(test)]
     pub(crate) fn set_partitioned_rewards_feature_enabled_for_tests(&mut self, enable: bool) {
         if enable {
@@ -1508,13 +1498,12 @@ impl Bank {
     /// This constant affects consensus.
     const PARTITION_REWARDS_STORES_PER_BLOCK: u64 = 4096;
 
-    /// Calculate the reward credit interval.
+    /// Calculate the number of blocks required to store rewards in all accounts.
     fn get_reward_credit_num_blocks(&self) -> u64 {
         if self.epoch_schedule.warmup && self.epoch < self.first_normal_epoch() {
             1
         } else {
-            let num_chunks = if let EpochRewardStatus::Active(StartSlotBlockHeightAndRewards {
-                parent_start_slot: _parent_start_slot,
+            let num_chunks = if let EpochRewardStatus::Active(StartBlockHeightAndRewards {
                 parent_start_block_height: _parent_start_block_height,
                 calculated_epoch_stake_rewards: ref stake_rewards,
             }) = self.epoch_reward_status
@@ -1543,11 +1532,11 @@ impl Bank {
 
     /// Return true if the current bank falls in epoch reward interval
     fn in_reward_interval(&self) -> bool {
-        self.epoch_reward_status.is_active()
+        matches!(self.epoch_reward_status, EpochRewardStatus::Active(_))
     }
 
-    // For testing only
-    pub fn force_reward_interval_end_for_test(&mut self) {
+    /// For testing only
+    pub fn force_reward_interval_end_for_tests(&mut self) {
         self.epoch_reward_status = EpochRewardStatus::Inactive;
     }
 
@@ -1811,50 +1800,19 @@ impl Bank {
         );
 
         let mut rewards_metrics = RewardsMetrics::default();
-
+        // After saving a snapshot of stakes, apply stake rewards and commission
         let (_, update_rewards_with_thread_pool_time) = measure!(
             {
                 if self.partitioned_rewards_feature_enabled() {
-                    let (total_rewards, distributed_rewards, stake_rewards) = self
-                        .calculate_rewards_and_distribute_vote_rewards_with_thread_pool(
-                            parent_epoch,
-                            reward_calc_tracer,
-                            &thread_pool,
-                            &mut rewards_metrics,
-                        );
-
-                    self.epoch_reward_status =
-                        EpochRewardStatus::Active(StartSlotBlockHeightAndRewards {
-                            // Use the parent slot/block height here. Storing the parent_slot, we could possible reuse the reward computation results during forks.
-                            //  N1
-                            //   \ --> N2
-                            //   \ --> N3
-                            //   \ --> N4
-                            // Let's say there are 3 forks at the epoch boundaries, where N2/N3/N4 are the start blocks in the current epoch and N1 is the parent of these three in previous epoch.
-                            // Then the rewards computed from N2,N3,N4 should all be the same.
-                            // To avoid redundant computation, we could store the calculated rewards in a map indexed by parent block N1's slot number, then computation from N3 and N4 can be avoided.
-                            // This optimization is also applicable for the current design in theory, i.e. change `calculated_rewards` into a map of parent_slot->StakeRewards, to avoid repeated computation in forks.
-                            // Storing parent_slot will leave room for future optimization if needed.
-                            parent_start_slot: parent_slot,
-                            parent_start_block_height: parent_height,
-                            calculated_epoch_stake_rewards: Arc::new(stake_rewards),
-                        });
-
-                    datapoint_warn!(
-                        "reward-status-update",
-                        ("slot", self.slot(), i64),
-                        ("activate", 1, i64),
-                        ("parent_start_slot", parent_slot, i64),
-                        ("parent_start_height", parent_height, i64),
+                    self.begin_partitioned_rewards(
+                        parent_epoch,
+                        reward_calc_tracer,
+                        &thread_pool,
+                        parent_slot,
+                        parent_height,
+                        &mut rewards_metrics,
                     );
-
-                    let credit_start = parent_slot + Self::REWARD_CALCULATION_NUM_BLOCKS + 1;
-                    let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
-
-                    // TODO: update sysvar with (_total_rewards, _distributed_rewards, credit_end_exclusive)
-                    info!("EpochRewards Start: {total_rewards} {distributed_rewards} {credit_end_exclusive}");
                 } else {
-                    // After saving a snapshot of stakes, apply stake rewards and commission
                     self.update_rewards_with_thread_pool(
                         parent_epoch,
                         reward_calc_tracer,
@@ -1882,28 +1840,75 @@ impl Bank {
         );
     }
 
+    /// Begin the process of calculating and distributing rewards.
+    /// This process can take multiple slots.
+    fn begin_partitioned_rewards(
+        &mut self,
+        parent_epoch: Epoch,
+        reward_calc_tracer: Option<impl Fn(&RewardCalculationEvent) + Send + Sync>,
+        thread_pool: &ThreadPool,
+        parent_slot: Slot,
+        parent_height: u64,
+        rewards_metrics: &mut RewardsMetrics,
+    ) {
+        let (total_rewards, distributed_rewards, stake_rewards) = self
+            .calculate_rewards_and_distribute_vote_rewards_with_thread_pool(
+                parent_epoch,
+                reward_calc_tracer,
+                &thread_pool,
+                rewards_metrics,
+            );
+
+        self.epoch_reward_status = EpochRewardStatus::Active(StartBlockHeightAndRewards {
+            // Use the parent slot/block height here. Storing the parent_slot, we could possible reuse the reward computation results during forks.
+            //  N1
+            //   \ --> N2
+            //   \ --> N3
+            //   \ --> N4
+            // Let's say there are 3 forks at the epoch boundaries, where N2/N3/N4 are the start blocks in the current epoch and N1 is the parent of these three in previous epoch.
+            // Then the rewards computed from N2,N3,N4 should all be the same.
+            // To avoid redundant computation, we could store the calculated rewards in a map indexed by parent block N1's slot number, then computation from N3 and N4 can be avoided.
+            // This optimization is also applicable for the current design in theory, i.e. change `calculated_rewards` into a map of parent_slot->StakeRewards, to avoid repeated computation in forks.
+            parent_start_block_height: parent_height,
+            calculated_epoch_stake_rewards: Arc::new(stake_rewards),
+        });
+
+        datapoint_warn!(
+            "reward-status-update",
+            ("slot", self.slot(), i64),
+            ("activate", 1, i64),
+            ("parent_start_slot", parent_slot, i64),
+            ("parent_start_height", parent_height, i64),
+        );
+
+        let credit_start = parent_slot + Self::REWARD_CALCULATION_NUM_BLOCKS + 1;
+        let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
+
+        // TODO: update sysvar with (_total_rewards, _distributed_rewards, credit_end_exclusive)
+        info!("EpochRewards Start: {total_rewards} {distributed_rewards} {credit_end_exclusive}");
+    }
+
     /// Process reward distribution for the block if it is inside reward interval.
     fn distribute_epoch_rewards(&mut self) {
-        if let EpochRewardStatus::Active(status) = self.epoch_reward_status.to_owned() {
+        if let EpochRewardStatus::Active(status) = &self.epoch_reward_status {
             let height = self.block_height();
             // + 1 because parent_start_block_height is the parent block of the current epoch.
             let credit_start =
-                status.parent_start_block_height + Self::REWARD_CALCULATION_NUM_BLOCKS + 1;
+                status.parent_start_block_height + 1 + Self::REWARD_CALCULATION_NUM_BLOCKS;
             let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
+            drop(status);
 
             if height >= credit_start && height < credit_end_exclusive {
                 let partition_index = height - credit_start;
                 self.credit_epoch_rewards_in_partition(partition_index);
             }
 
-            if height >= credit_end_exclusive && self.epoch_reward_status.is_active() {
+            if height >= credit_end_exclusive {
                 self.epoch_reward_status = EpochRewardStatus::Inactive;
                 datapoint_warn!(
                     "reward-status-update",
                     ("slot", self.slot(), i64),
                     ("activate", 0, i64),
-                    ("parent_start_slot", status.parent_start_slot, i64),
-                    ("parent_start_height", status.parent_start_block_height, i64),
                 );
             }
         }
@@ -3395,7 +3400,7 @@ impl Bank {
         };
 
         let vote_account_rewards: VoteRewards = DashMap::new();
-        let (stake_rewards, measure) = measure!(thread_pool.install(|| {
+        let (stake_rewards, measure_us) = measure_us!(thread_pool.install(|| {
             stake_delegations
                 .par_iter()
                 .filter_map(|(stake_pubkey, stake_account)| {
@@ -3487,10 +3492,16 @@ impl Bank {
                 })
                 .collect()
         }));
+        // jwash: should this include calc_vote_rewards, too?
+        metrics.redeem_rewards_us += measure_us;
 
-        let vote_rewards = vote_account_rewards
+        (Self::calc_vote_rewards(vote_account_rewards), stake_rewards)
+    }
+
+    fn calc_vote_rewards(vote_account_rewards: DashMap<Pubkey, VoteReward>) -> VoteRewardsAccounts {
+        vote_account_rewards
             .into_iter()
-            .map(
+            .filter_map(
                 |(
                     vote_pubkey,
                     VoteReward {
@@ -3502,10 +3513,10 @@ impl Bank {
                 )| {
                     if let Err(err) = vote_account.checked_add_lamports(vote_rewards) {
                         debug!("reward redemption failed for {}: {:?}", vote_pubkey, err);
-                        return (None, None);
+                        return None;
                     }
 
-                    (
+                    Some((
                         Some((
                             vote_pubkey,
                             RewardInfo {
@@ -3520,13 +3531,10 @@ impl Bank {
                         } else {
                             None
                         },
-                    )
+                    ))
                 },
             )
-            .collect::<Vec<_>>();
-
-        metrics.redeem_rewards_us += measure.as_us();
-        (vote_rewards, stake_rewards)
+            .collect()
     }
 
     /// Calculates epoch reward for stake/vote accounts using joined vote/stake account map
@@ -3810,13 +3818,13 @@ impl Bank {
     ///     - partition_index: reward partition index
     /// Store the rewards to AccountsDB, update reward history record and total capital.
     fn credit_epoch_rewards_in_partition(&mut self, partition_index: u64) {
-        if let EpochRewardStatus::Active(StartSlotBlockHeightAndRewards {
-            parent_start_slot: _parent_start_slot,
+        if let EpochRewardStatus::Active(StartBlockHeightAndRewards {
             parent_start_block_height: _parent_start_block_height,
             calculated_epoch_stake_rewards: ref stake_rewards,
         }) = self.epoch_reward_status
         {
             let mut metrics = RewardsStoreMetrics {
+                // jwash: should we include cap in the metrics?
                 pre_capitalization: self.capitalization(),
                 total_stake_accounts_count: stake_rewards.len(),
                 partition_index,
@@ -3831,31 +3839,21 @@ impl Bank {
                     num_rewards: stake_store_counts,
                     total_rewards_in_lamports: total_stake_rewards,
                 },
-                measure,
-            ) = measure!(
-                self.store_stake_accounts_in_partition(this_partition_stake_rewards),
-                "store_stake_account_in_partition"
-            );
-            metrics.store_stake_accounts_us += measure.as_us();
+                measure_us,
+            ) = measure_us!(self.store_stake_accounts_in_partition(this_partition_stake_rewards));
+            metrics.store_stake_accounts_us += measure_us;
             metrics.store_stake_accounts_count += stake_store_counts;
 
             self.update_reward_history_in_partition(this_partition_stake_rewards);
 
-            let validator_rewards_paid: u64 = u64::try_from(total_stake_rewards).unwrap();
             self.capitalization
-                .fetch_add(validator_rewards_paid, AcqRel);
+                .fetch_add(total_stake_rewards as u64, AcqRel);
 
             metrics.post_capitalization = self.capitalization();
 
             // TODO (assert! and add EpochReward sysvar)
 
-            report_partitioned_reward_metrics(
-                self.slot(),
-                self.epoch(),
-                self.parent_slot(),
-                self.block_height(),
-                metrics,
-            );
+            report_partitioned_reward_metrics(self, metrics);
         }
     }
 

@@ -1,4 +1,5 @@
 use {
+    crate::bank::Bank,
     solana_sdk::clock::{Epoch, Slot},
     std::sync::atomic::{AtomicU64, Ordering::Relaxed},
 };
@@ -175,19 +176,13 @@ pub(crate) struct RewardsStoreMetrics {
     pub(crate) post_capitalization: u64,
 }
 
-pub(crate) fn report_partitioned_reward_metrics(
-    slot: Slot,
-    epoch: Epoch,
-    parent_slot: Slot,
-    block_height: u64,
-    timings: RewardsStoreMetrics,
-) {
+pub(crate) fn report_partitioned_reward_metrics(bank: &Bank, timings: RewardsStoreMetrics) {
     datapoint_info!(
         "bank-partitioned_epoch_rewards_credit",
-        ("slot", slot, i64),
-        ("epoch", epoch, i64),
-        ("block_height", block_height, i64),
-        ("parent_slot", parent_slot, i64),
+        ("slot", bank.slot(), i64),
+        ("epoch", bank.epoch(), i64),
+        ("block_height", bank.block_height(), i64),
+        ("parent_slot", bank.parent_slot(), i64),
         ("partition_index", timings.partition_index, i64),
         (
             "store_stake_accounts_us",

@@ -1173,7 +1173,7 @@ impl ProgramTestContext {
         let warp_slot = pre_warp_slot + 1;
         let mut warp_bank = Bank::new_from_parent(&bank, &Pubkey::default(), warp_slot);
 
-        warp_bank.force_reward_interval_end_for_test();
+        warp_bank.force_reward_interval_end_for_tests();
         bank_forks.insert(warp_bank);
 
         // Update block commitment cache, otherwise banks server will poll at
