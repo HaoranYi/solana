@@ -1493,6 +1493,18 @@ impl Bank {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_epoch_reward_status_active_for_test(
+        &mut self,
+        parent_height: u64,
+        stake_rewards: StakeRewards,
+    ) {
+        self.epoch_reward_status = EpochRewardStatus::Active(StartBlockHeightAndRewards {
+            parent_start_block_height: parent_height,
+            calculated_epoch_stake_rewards: Arc::new(stake_rewards),
+        });
+    }
+
     /// Target to store 64 rewards per entry/tick in a block. A block has a minimal of 64
     /// entries/ticks. This gives 4096 total rewards to store in one block.
     /// This constant affects consensus.

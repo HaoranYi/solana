@@ -12644,7 +12644,7 @@ fn test_squash_timing_add_assign() {
     assert!(t0 == expected);
 }
 
-/// Test partitioned_reward_enable feature
+/// Test partitioned_reward feature enable/disable
 #[test]
 fn test_partitioned_reward_enable() {
     let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
@@ -12657,38 +12657,123 @@ fn test_partitioned_reward_enable() {
     assert!(!bank.partitioned_rewards_feature_enabled());
 }
 
-/// Test partition range
+/// Test get_reward_credit_num_blocks during normal epoch gives the expected result
 #[test]
-fn test_get_epoch_reward_partition_range() {
-    let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
-    let bank = Bank::new_for_tests(&genesis_config);
+fn test_reward_interval_normal() {
+    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
 
-    let n = 65312;
-    let range = bank.get_partition_range(0, n);
-    assert_eq!(range.start, 0);
-    assert_eq!(range.end, 4096);
+    let mut bank = Bank::new_for_tests(&genesis_config);
+
+    // Given 8192 rewards, it will take 2 blocks to credit all the rewards
+    let expected_num = 8192;
+    let stake_rewards = (0..expected_num)
+        .map(|_| StakeReward::random())
+        .collect::<Vec<_>>();
+    bank.set_epoch_reward_status_active_for_test(0, stake_rewards);
+
+    assert_eq!(bank.get_reward_credit_num_blocks(), 2);
+    assert_eq!(
+        bank.get_reward_total_num_blocks(),
+        bank.get_reward_credit_num_blocks() + 1
+    );
 }
 
-/// Test that partition range panics
+/// Test get_reward_credit_num_blocks during small epoch
+/// The num_credit_blocks should be cap to 5% of the total number of blocks in the epoch.
+#[test]
+fn test_reward_interval_cap() {
+    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    genesis_config.epoch_schedule = EpochSchedule::custom(32, 32, false);
+
+    let mut bank = Bank::new_for_tests(&genesis_config);
+
+    // Given 8192 rewards, normally it will take 2 blocks to credit all the rewards. However, because of
+    // the short epoch - 32 slots, we should cap the number of credit blocks to 32/20 = 1.
+    let expected_num = 8192;
+    let stake_rewards = (0..expected_num)
+        .map(|_| StakeReward::random())
+        .collect::<Vec<_>>();
+    bank.set_epoch_reward_status_active_for_test(0, stake_rewards);
+
+    assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+    assert_eq!(
+        bank.get_reward_total_num_blocks(),
+        bank.get_reward_credit_num_blocks() + 1
+    );
+}
+
+/// Test get_reward_interval during warm up epoch gives the expected result.
+/// The num_credit_blocks should be 1 during warm up epoch.
+#[test]
+fn test_reward_interval_warmup() {
+    let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+
+    let bank = Bank::new_for_tests(&genesis_config);
+    assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+    assert_eq!(
+        bank.get_reward_total_num_blocks(),
+        bank.get_reward_credit_num_blocks() + 1
+    );
+}
+
+/// Test reward partition range that covers all the rewards slice.
+#[test]
+fn test_get_epoch_reward_partition_range() {
+    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
+    let mut bank = Bank::new_for_tests(&genesis_config);
+
+    // simulate 40K - 1 rewards, the expected num of credit blocks should be 10.
+    let expected_num = 40959;
+    let stake_rewards = (0..expected_num)
+        .map(|_| StakeReward::random())
+        .collect::<Vec<_>>();
+    bank.set_epoch_reward_status_active_for_test(0, stake_rewards);
+
+    assert_eq!(bank.get_reward_credit_num_blocks(), 10);
+
+    // assert expected full partition range
+    for i in 0..9 {
+        let range = bank.get_partition_range(i, expected_num);
+        assert_eq!(range.start as u64, i * 4096);
+        assert_eq!(range.end as u64, (i + 1) * 4096);
+    }
+
+    // assert last partial partiton range
+    let range = bank.get_partition_range(9, expected_num);
+    assert_eq!(range.start, 9 * 4096);
+    assert_eq!(range.end, 40959);
+}
+
+/// Test that reward partition range panics when passing out of range partition index
 #[test]
 #[should_panic]
 fn test_get_epoch_reward_partition_range_panic() {
-    let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
-    let bank = Bank::new_for_tests(&genesis_config);
+    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
+    let mut bank = Bank::new_for_tests(&genesis_config);
 
-    // This call should panic
-    let n = 65312;
-    let _range = bank.get_partition_range(15, n);
+    // simulate 40K - 1 rewards, the expected num of credit blocks should be 10.
+    let expected_num = 40959;
+    let stake_rewards = (0..expected_num)
+        .map(|_| StakeReward::random())
+        .collect::<Vec<_>>();
+    bank.set_epoch_reward_status_active_for_test(0, stake_rewards);
+
+    // This call should panic, i.e. 15 is out of the num_credits blocks
+    let _range = bank.get_partition_range(15, expected_num);
 }
 
-/// Test partitioned stores of epoch rewards
+/// Test partitioned credits of epoch rewards do cover all the rewards slice.
 #[test]
 fn test_epoch_credit_rewards() {
-    let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
-    let bank = Bank::new_for_tests(&genesis_config);
+    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
+    let mut bank = Bank::new_for_tests(&genesis_config);
 
-    // setup stake/vote accounts
-    let expected_num = 1234;
+    // setup the expected number of stake rewards
+    let expected_num = 12345;
 
     let mut stake_rewards = (0..expected_num)
         .map(|_| StakeReward::random())
@@ -12702,6 +12787,7 @@ fn test_epoch_credit_rewards() {
         stake_reward.credit(1);
         expected_rewards += 1;
     }
+    bank.set_epoch_reward_status_active_for_test(0, stake_rewards.clone());
 
     // Test partitioned stores
     let mut total_num = 0;
@@ -12721,48 +12807,62 @@ fn test_epoch_credit_rewards() {
         total_rewards += rewards;
     }
 
+    // assert that all rewards are credited
     assert_eq!(total_num, expected_num);
     assert_eq!(total_rewards, expected_rewards);
 }
 
-/// Test get_reward_interval during normal epoch
+/// Test partitioned reward history update from rewards slice
 #[test]
-fn test_reward_interval_normal() {
+fn test_epoch_partitoned_reward_history_update() {
     let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
     genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
+    let mut bank = Bank::new_for_tests(&genesis_config);
 
-    let bank = Bank::new_for_tests(&genesis_config);
-    assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+    // setup the expected number of stake rewards
+    let expected_num = 12345;
+
+    let mut stake_rewards = (0..expected_num)
+        .map(|_| StakeReward::random())
+        .collect::<Vec<_>>();
+
+    bank.store_accounts((bank.slot(), &stake_rewards[..], bank.include_slot_in_hash()));
+
+    // Simulate rewards
+    for stake_reward in &mut stake_rewards {
+        stake_reward.credit(1);
+    }
+    bank.set_epoch_reward_status_active_for_test(0, stake_rewards.clone());
+
+    // Test partitioned reward history updates
+    let pre_update_history_len = bank.rewards.read().unwrap().len();
+    let mut total_num_updates = 0;
+
+    for partition_index in 0..bank.get_reward_credit_num_blocks() {
+        let stake_rewards =
+            &stake_rewards[bank.get_partition_range(partition_index, stake_rewards.len())];
+
+        let num_history_updates = bank.update_reward_history_in_partition(stake_rewards);
+
+        total_num_updates += num_history_updates;
+    }
+
+    let post_update_history_len = bank.rewards.read().unwrap().len();
+
+    // assert that all rewards are updated to reward_history
+    assert_eq!(total_num_updates, expected_num);
+    assert_eq!(
+        total_num_updates,
+        post_update_history_len - pre_update_history_len
+    );
 }
 
-/// Test get_reward_interval during small epoch
+/// Test reward calculation launched at the first block of the new epoch. And the reward staus
+/// makes a transition to `active`. Then, after a few more blocks, i.e.
+/// get_reward_credit_num_blocks(), the reward status make another transition back to `inactive`.
 #[test]
-fn test_reward_interval_cap() {
-    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
-    genesis_config.epoch_schedule = EpochSchedule::custom(32, 32, false);
-
-    let bank = Bank::new_for_tests(&genesis_config);
-    assert_eq!(bank.get_reward_credit_num_blocks(), 1);
-    assert_eq!(bank.get_reward_total_num_blocks(), 2);
-}
-
-/// Test get_reward_interval during warm up epoch
-#[test]
-fn test_reward_interval_warmup() {
-    let (genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
-
-    let bank = Bank::new_for_tests(&genesis_config);
-    assert_eq!(bank.get_reward_credit_num_blocks(), 1);
-    assert_eq!(bank.get_reward_total_num_blocks(), 2);
-}
-
-/// Test reward calculation
-#[test]
-fn test_reward_calculation() {
-    solana_logger::setup();
-
-    let thread_pool = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
-    // create a bank that ticks really slowly...
+fn test_reward_status_transtions_at_epoch_boundary() {
+    // create the first genesis bank
     let mut bank0 = Bank::new_for_tests(&GenesisConfig {
         accounts: (0..42)
             .map(|_| {
@@ -12772,7 +12872,6 @@ fn test_reward_calculation() {
                 )
             })
             .collect(),
-        // set it up so the first epoch is a full year long
         poh_config: PohConfig {
             target_tick_duration: Duration::from_secs(
                 SECONDS_PER_YEAR as u64 / MINIMUM_SLOTS_PER_EPOCH / DEFAULT_TICKS_PER_SLOT,
@@ -12785,11 +12884,10 @@ fn test_reward_calculation() {
         ..GenesisConfig::default()
     });
 
+    // enable partitioned rewards feature
     bank0.set_partitioned_rewards_feature_enabled_for_tests(true);
     let bank0 = Arc::new(bank0);
 
-    // enable lazy rent collection because this test depends on rent-due accounts
-    // not being eagerly-collected for exact rewards calculation
     bank0.restore_old_behavior_for_fragile_tests();
 
     assert_eq!(
@@ -12797,11 +12895,11 @@ fn test_reward_calculation() {
         42 * 1_000_000_000 + genesis_sysvar_and_builtin_program_lamports(),
     );
 
+    // set up vote and stake accounts
     let ((vote_id, mut vote_account), (stake_id, stake_account)) =
         crate::stakes::tests::create_staked_node_accounts(10_000);
     let starting_vote_and_stake_balance = 10_000 + 1;
 
-    // set up accounts
     bank0.store_account_and_update_capitalization(&stake_id, &stake_account);
 
     // generate some rewards
@@ -12832,23 +12930,48 @@ fn test_reward_calculation() {
     );
     assert!(bank0.rewards.read().unwrap().is_empty());
 
-    // put a child bank in epoch 1, which calls update_rewards()...
-    let mut bank1 = Bank::new_from_parent(
+    // put a child bank in epoch 1
+    // This block calculates the rewards and distribute the vote_rewards.
+    let bank1 = Bank::new_from_parent(
         &bank0,
         &Pubkey::default(),
         bank0.get_slots_in_epoch(bank0.epoch()) + 1,
     );
 
-    let epoch = bank1.epoch();
-    let mut metrics = RewardsMetrics::default();
-    bank1.calculate_rewards_and_distribute_vote_rewards_with_thread_pool(
-        epoch,
-        null_tracer(),
-        &thread_pool,
-        &mut metrics,
-    );
+    let bank1 = Arc::new(bank1);
+    bank1.freeze();
+
+    // assert that after reward calculation, the bank is corrected marked active in epoch reward
+    // status.
+    assert!(bank1.in_reward_interval());
+    assert_eq!(bank1.get_reward_credit_num_blocks(), 1);
+    // assert that vote rewards are paid
+    assert_eq!(bank1.rewards.read().unwrap().len(), 1);
+
+    // Put another child bank in epoch 1
+    // This block should distribute the stake rewards.
+    let bank2 = Bank::new_from_parent(&bank1, &Pubkey::default(), bank1.slot() + 1);
+
+    let bank2 = Arc::new(bank2);
+    bank2.freeze();
+
+    // assert stake rewards reward status transition to `active`.
+    assert!(bank2.in_reward_interval());
+    assert_eq!(bank2.get_reward_credit_num_blocks(), 1);
+
+    // Put another child bank in epoch 1
+    // This block should be out side of reward distribution
+    let bank3 = Bank::new_from_parent(&bank2, &Pubkey::default(), bank2.slot() + 1);
+
+    let bank3 = Arc::new(bank3);
+    bank3.freeze();
+
+    // assert reward status transition back to `inactive`
+    assert!(!bank3.in_reward_interval());
 }
 
+/// Test that stake accounts are locked during reward interval.
+/// Any stake change instructions will result in `StakeProgramUnavailable` error.
 #[test]
 fn test_reward_accounts_lock() {
     use solana_sdk::transaction::TransactionError::StakeProgramUnavailable;
