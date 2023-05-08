@@ -3506,7 +3506,7 @@ impl Bank {
         }));
         // jwash: should this include calc_vote_rewards, too?
         // Yes, I think so. Original metrics of redeem_rewards_us include both stake_rewards and vote_rewards.
-
+        // Updated.
         let (vote_rewards, measure_vote_rewards_us) =
             measure_us!(Self::calc_vote_rewards(vote_account_rewards));
 
@@ -3842,6 +3842,7 @@ impl Bank {
         {
             let mut metrics = RewardsStoreMetrics {
                 // jwash: should we include cap in the metrics?
+                // Do you mean post_capitalization? it was updated at line 3893 below.
                 pre_capitalization: self.capitalization(),
                 total_stake_accounts_count: stake_rewards.len(),
                 partition_index,
@@ -3868,7 +3869,7 @@ impl Bank {
 
             metrics.post_capitalization = self.capitalization();
 
-            // TODO (assert! and add EpochReward sysvar)
+            // TODO (add EpochRewards sysvar)
 
             report_partitioned_reward_metrics(self, metrics);
         }
