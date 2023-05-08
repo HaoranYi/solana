@@ -12665,7 +12665,7 @@ fn test_reward_interval_normal() {
 
     let mut bank = Bank::new_for_tests(&genesis_config);
 
-    // Given 8192 rewards, it will take 2 blocks to credit all the rewards
+    // Given 8k rewards, it will take 2 blocks to credit all the rewards
     let expected_num = 8192;
     let stake_rewards = (0..expected_num)
         .map(|_| StakeReward::random())
@@ -12688,8 +12688,8 @@ fn test_reward_interval_cap() {
 
     let mut bank = Bank::new_for_tests(&genesis_config);
 
-    // Given 8192 rewards, normally it will take 2 blocks to credit all the rewards. However, because of
-    // the short epoch - 32 slots, we should cap the number of credit blocks to 32/20 = 1.
+    // Given 8k rewards, normally it will take 2 blocks to credit all the rewards. However, because of
+    // the short epoch, i.e. 32 slots, we should cap the number of credit blocks to 32/20 = 1.
     let expected_num = 8192;
     let stake_rewards = (0..expected_num)
         .map(|_| StakeReward::random())
@@ -12761,7 +12761,7 @@ fn test_get_epoch_reward_partition_range_panic() {
         .collect::<Vec<_>>();
     bank.set_epoch_reward_status_active_for_test(0, stake_rewards);
 
-    // This call should panic, i.e. 15 is out of the num_credits blocks
+    // This call should panic, i.e. 15 is out of the num_credit_blocks
     let _range = bank.get_partition_range(15, expected_num);
 }
 
@@ -13027,7 +13027,8 @@ fn test_reward_status_transtions_at_epoch_boundary() {
 }
 
 /// Test that stake accounts are locked during reward interval.
-/// Any stake change instructions will result in `StakeProgramUnavailable` error.
+/// Any stake change instructions will result in `StakeProgramUnavailable` error when reward status
+/// is active.
 #[test]
 fn test_reward_accounts_lock() {
     use solana_sdk::transaction::TransactionError::StakeProgramUnavailable;
