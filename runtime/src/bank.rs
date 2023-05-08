@@ -3139,7 +3139,6 @@ impl Bank {
                 reward_calc_tracer.as_ref(),
                 metrics,
             );
-
             drop(reward_calculate_param);
             drop(stakes);
 

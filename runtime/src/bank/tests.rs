@@ -12857,9 +12857,65 @@ fn test_epoch_partitoned_reward_history_update() {
     );
 }
 
-/// Test reward calculation launched at the first block of the new epoch. And the reward staus
-/// makes a transition to `active`. Then, after a few more blocks, i.e.
-/// get_reward_credit_num_blocks(), the reward status make another transition back to `inactive`.
+/// Test reward compuation at the epoch boundary
+#[test]
+fn test_reward_computation() {
+    // setup the expected number of stake delegations
+    let expected_num = 100;
+
+    let validator_keypairs = (0..expected_num)
+        .map(|_| ValidatorVoteKeypairs::new_rand())
+        .collect::<Vec<_>>();
+
+    let GenesisConfigInfo { genesis_config, .. } = create_genesis_config_with_vote_accounts(
+        1_000_000_000,
+        &validator_keypairs,
+        vec![100; expected_num],
+    );
+
+    let bank0 = Bank::new_for_tests(&genesis_config);
+    let mut bank_forks = BankForks::new(bank0);
+
+    // Fill bank_forks with banks with votes landing in the next slot
+    // Create enough banks such that vote account will root slots 0 and 1
+    for slot in 0..34 {
+        let previous_bank = bank_forks.get(slot).unwrap();
+        let pre_cap = previous_bank.capitalization();
+        let bank = Bank::new_from_parent(&previous_bank, &Pubkey::default(), slot + 1);
+        for validator_vote_keypairs in validator_keypairs.iter() {
+            let vote = vote_transaction::new_vote_transaction(
+                vec![slot],
+                previous_bank.hash(),
+                previous_bank.last_blockhash(),
+                &validator_vote_keypairs.node_keypair,
+                &validator_vote_keypairs.vote_keypair,
+                &validator_vote_keypairs.vote_keypair,
+                None,
+            );
+            bank.process_transaction(&vote).unwrap();
+        }
+        let post_cap = bank.capitalization();
+
+        // assert reward compute status activated at epoch boundary
+        if slot == 31 || slot == 32 {
+            assert!(bank.in_reward_interval());
+            assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+        }
+
+        // assert reward compute status clearance
+        if slot == 33 {
+            assert!(!bank.in_reward_interval());
+        }
+        assert!(post_cap >= pre_cap);
+        bank.freeze();
+        bank_forks.insert(bank);
+    }
+}
+
+/// Test reward calculation is launched at the first block of the new epoch. And the reward staus
+/// makes a transition to `active` in this block. Then, after a few more blocks, i.e.
+/// get_reward_credit_num_blocks(), when the reward credits have completed, and the bank reward status
+/// should make another transition back to `inactive`.
 #[test]
 fn test_reward_status_transtions_at_epoch_boundary() {
     // create the first genesis bank
@@ -12948,7 +13004,7 @@ fn test_reward_status_transtions_at_epoch_boundary() {
     // assert that vote rewards are paid
     assert_eq!(bank1.rewards.read().unwrap().len(), 1);
 
-    // Put another child bank in epoch 1
+    // put another child bank in epoch 1
     // This block should distribute the stake rewards.
     let bank2 = Bank::new_from_parent(&bank1, &Pubkey::default(), bank1.slot() + 1);
 
@@ -12959,7 +13015,7 @@ fn test_reward_status_transtions_at_epoch_boundary() {
     assert!(bank2.in_reward_interval());
     assert_eq!(bank2.get_reward_credit_num_blocks(), 1);
 
-    // Put another child bank in epoch 1
+    // put another child bank in epoch 1
     // This block should be out side of reward distribution
     let bank3 = Bank::new_from_parent(&bank2, &Pubkey::default(), bank2.slot() + 1);
 
@@ -12990,11 +13046,11 @@ fn test_reward_accounts_lock() {
     // Fill bank_forks with banks with votes landing in the next slot
     // Create enough banks such that vote account will root slots 0 and 1
     let mut reward_account_lock_hit = false;
-    for x in 0..33 {
-        let previous_bank = bank_forks.get(x).unwrap();
-        let bank = Bank::new_from_parent(&previous_bank, &Pubkey::default(), x + 1);
+    for slot in 0..33 {
+        let previous_bank = bank_forks.get(slot).unwrap();
+        let bank = Bank::new_from_parent(&previous_bank, &Pubkey::default(), slot + 1);
         let vote = vote_transaction::new_vote_transaction(
-            vec![x],
+            vec![slot],
             previous_bank.hash(),
             previous_bank.last_blockhash(),
             &validator_vote_keypairs.node_keypair,
@@ -13006,7 +13062,7 @@ fn test_reward_accounts_lock() {
 
         // Insert a transfer transaction to stake account to violate the
         // StakeProgramUnavailable at the beginning of epoch 1.
-        if x == 32 {
+        if slot == 32 {
             let tx = system_transaction::transfer(
                 node_key,
                 &stake_key.pubkey(),
