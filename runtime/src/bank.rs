@@ -2592,15 +2592,14 @@ impl Bank {
         let RewardCalculationResult {
             stake_rewards,
             total_rewards: total_stake_rewards,
-        } = self
-            .do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool(
-                prev_epoch,
-                validator_rewards,
-                reward_calc_tracer,
-                self.credits_auto_rewind(),
-                thread_pool,
-                metrics,
-            );
+        } = self.do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool(
+            prev_epoch,
+            validator_rewards,
+            reward_calc_tracer,
+            self.credits_auto_rewind(),
+            thread_pool,
+            metrics,
+        );
 
         let new_vote_balance_and_staked = self.stakes_cache.stakes().vote_balance_and_staked();
 
