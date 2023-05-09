@@ -1896,8 +1896,13 @@ impl Bank {
         let credit_start = parent_slot + Self::REWARD_CALCULATION_NUM_BLOCKS + 1;
         let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
 
-        // TODO: update sysvar with (total_rewards, distributed_rewards, credit_end_exclusive)
+        // create EpochRewards sysvar that holds the balance of undistributed rewards with
+        // (total_rewards, distributed_rewards, credit_end_exclusive)
         info!("EpochRewards Start: {total_rewards} {distributed_rewards} {credit_end_exclusive}");
+        self.create_epoch_rewards(total_rewards, distributed_rewards, credit_end_exclusive);
+
+        self.capitalization
+            .fetch_add(total_rewards - distributed_rewards, Relaxed);
     }
 
     /// Process reward distribution for the block if it is inside reward interval.
@@ -1922,6 +1927,17 @@ impl Bank {
                     ("slot", self.slot(), i64),
                     ("activate", 0, i64),
                 );
+
+                if let Some(mut account) = self.get_account(&sysvar::epoch_rewards::id()) {
+                    if account.lamports() > 0 {
+                        warn!(
+                            "burn {} extra lamports in EpochReward sysvar account slot {}",
+                            account.lamports(),
+                            self.slot()
+                        );
+                    }
+                    self.burn_and_purge_account(&sysvar::epoch_rewards::id(), account);
+                }
             }
         }
     }
@@ -3863,15 +3879,62 @@ impl Bank {
 
             self.update_reward_history_in_partition(this_partition_stake_rewards);
 
-            self.capitalization
-                .fetch_add(total_stake_rewards as u64, AcqRel);
+            // This is handled by sysvar.
+            // self.capitalization
+            //    .fetch_add(total_stake_rewards as u64, AcqRel);
 
             metrics.post_capitalization = self.capitalization();
 
-            // TODO (add EpochRewards sysvar)
+            // update EpochRewards sysvar
+            self.update_epoch_rewards(total_stake_rewards as u64);
 
             report_partitioned_reward_metrics(self, metrics);
         }
+    }
+
+    /// Create EpochRewards syavar with calculated rewards
+    fn create_epoch_rewards(
+        &self,
+        total_rewards: u64,
+        distributed_rewards: u64,
+        distribution_complete_block_height: u64,
+    ) {
+        assert!(self.partitioned_rewards_feature_enabled());
+
+        let epoch_rewards = sysvar::epoch_rewards::EpochRewards::new(
+            total_rewards,
+            distributed_rewards,
+            distribution_complete_block_height,
+        );
+
+        self.update_sysvar_account(&sysvar::epoch_rewards::id(), |account| {
+            let mut inherited_account_fields =
+                self.inherit_specially_retained_account_fields(account);
+
+            assert!(total_rewards >= distributed_rewards);
+            // set the account lamports to the undistributed rewards
+            inherited_account_fields.0 = total_rewards - distributed_rewards;
+            create_account(&epoch_rewards, inherited_account_fields)
+        });
+    }
+
+    /// Update EpochRewards sysvar with distributed rewards
+    fn update_epoch_rewards(&self, distributed: u64) {
+        assert!(self.partitioned_rewards_feature_enabled());
+
+        let mut epoch_rewards: sysvar::epoch_rewards::EpochRewards =
+            from_account(&self.get_account(&sysvar::epoch_rewards::id()).unwrap()).unwrap();
+        epoch_rewards.distribute(distributed);
+
+        self.update_sysvar_account(&sysvar::epoch_rewards::id(), |account| {
+            let mut inherited_account_fields =
+                self.inherit_specially_retained_account_fields(account);
+
+            let lamports = inherited_account_fields.0;
+            assert!(lamports >= distributed);
+            inherited_account_fields.0 = lamports - distributed;
+            create_account(&epoch_rewards, inherited_account_fields)
+        });
     }
 
     fn update_recent_blockhashes_locked(&self, locked_blockhash_queue: &BlockhashQueue) {
