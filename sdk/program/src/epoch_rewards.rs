@@ -34,7 +34,6 @@ impl EpochRewards {
     pub fn distribute(&mut self, amount: u64) {
         assert!(self.distributed_rewards + amount <= self.total_rewards);
 
-        self.total_rewards -= amount;
         self.distributed_rewards += amount;
     }
 }
@@ -65,7 +64,7 @@ mod tests {
         let mut epoch_rewards = EpochRewards::new(100, 0, 64);
         epoch_rewards.distribute(100);
 
-        assert_eq!(epoch_rewards.total_rewards, 0);
+        assert_eq!(epoch_rewards.total_rewards, 100);
         assert_eq!(epoch_rewards.distributed_rewards, 100);
     }
 
