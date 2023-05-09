@@ -12859,9 +12859,9 @@ fn test_epoch_partitoned_reward_history_update() {
     );
 }
 
-/// Test reward compuation at the epoch boundary
+/// Test rewards compuation and partitioned rewards distribution at the epoch boundary
 #[test]
-fn test_reward_computation() {
+fn test_rewards_computation_and_partitioned_distribution() {
     solana_logger::setup();
 
     // setup the expected number of stake delegations
@@ -12874,49 +12874,66 @@ fn test_reward_computation() {
     let GenesisConfigInfo { genesis_config, .. } = create_genesis_config_with_vote_accounts(
         1_000_000_000,
         &validator_keypairs,
-        vec![100; expected_num],
+        vec![2_000_000_000; expected_num],
     );
 
     let bank0 = Bank::new_for_tests(&genesis_config);
     let mut bank_forks = BankForks::new(bank0);
 
-    // Fill bank_forks with banks with votes landing in the next slot
-    // Create enough banks such that vote account will root slots 0 and 1
+    // simulate block progress
     for slot in 0..34 {
         let previous_bank = bank_forks.get(slot).unwrap();
         let pre_cap = previous_bank.capitalization();
-        let bank = Bank::new_from_parent(&previous_bank, &Pubkey::default(), slot + 1);
-        for validator_vote_keypairs in validator_keypairs.iter() {
-            let vote = vote_transaction::new_vote_transaction(
-                vec![slot],
-                previous_bank.hash(),
-                previous_bank.last_blockhash(),
-                &validator_vote_keypairs.node_keypair,
-                &validator_vote_keypairs.vote_keypair,
-                &validator_vote_keypairs.vote_keypair,
-                None,
-            );
-            bank.process_transaction(&vote).unwrap();
-        }
+        let curr_slot = slot + 1;
+        let bank = Bank::new_from_parent(&previous_bank, &Pubkey::default(), curr_slot);
         let post_cap = bank.capitalization();
 
-        // assert reward compute status activated at epoch boundary
-        if slot == 31 || slot == 32 {
-            assert!(bank.in_reward_interval());
-            assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+        // Fill bank_forks with banks with votes landing in the next slot
+        // Create enough banks such that vote account will root
+        for validator_vote_keypairs in validator_keypairs.iter() {
+            let vote_id = validator_vote_keypairs.vote_keypair.pubkey();
+            let mut vote_account = bank.get_account(&vote_id).unwrap();
+            // generate some rewards
+            let mut vote_state = Some(vote_state::from(&vote_account).unwrap());
+            for i in 0..MAX_LOCKOUT_HISTORY + 42 {
+                if let Some(v) = vote_state.as_mut() {
+                    vote_state::process_slot_vote_unchecked(v, i as u64)
+                }
+                let versioned = VoteStateVersions::Current(Box::new(vote_state.take().unwrap()));
+                vote_state::to(&versioned, &mut vote_account).unwrap();
+                match versioned {
+                    VoteStateVersions::Current(v) => {
+                        vote_state = Some(*v);
+                    }
+                    _ => panic!("Has to be of type Current"),
+                };
+            }
+            bank.store_account_and_update_capitalization(&vote_id, &vote_account);
         }
 
-        // assert reward compute status clearance
-        if slot == 33 {
+        if curr_slot == 32 {
+            // This is the first block of epoch 1. Reward computation should happen in this block.
+            // assert reward compute status activated at epoch boundary
+            assert!(bank.in_reward_interval());
+            assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+            // assert post_cap increases due to rewards
+            assert!(post_cap > pre_cap);
+        } else if curr_slot == 33 {
+            // This is the 2nd block of epoch 1. Reward distribution should happen in this block.
+            // assert stake rewards are paid at the first block after epoch boundary
+            assert!(bank.in_reward_interval());
+            assert_eq!(bank.get_reward_credit_num_blocks(), 1);
+            assert_eq!(post_cap, pre_cap + 1); // due to sysvar lamport bump up for rent_exemption
+        } else if curr_slot == 34 {
+            // This is the 3nd block of epoch 1. Reward distribution should completed before this block.
             assert!(!bank.in_reward_interval());
-            // Total reward for this epoch is zero. When creating the EpochRewards sysvar, the
-            // default lamport set to 1. When rewards end, the extra 1 lamport in the sysvar should
-            // be burned. This will lead to that post_cap be less than pre_cap.
-            assert!(post_cap < pre_cap);
-        } else {
-            assert!(post_cap >= pre_cap);
+            assert_eq!(post_cap, pre_cap - 1); // due to burning sysvar
+        } else if slot > 0 {
+            // slot is not in rewards, cap should not change
+            assert_eq!(post_cap, pre_cap);
         }
         bank.freeze();
+        bank.squash();
         bank_forks.insert(bank);
     }
 }
@@ -13097,7 +13114,7 @@ fn test_epoch_reward_sysvar() {
     let mut bank = Bank::new_for_tests(&genesis_config);
     bank.set_partitioned_rewards_feature_enabled_for_tests(true);
 
-    let total_rewards = 1_000_000_000; // a large rewards so that the account is rent-exempted.
+    let total_rewards = 1_000_000_000; // a large rewards so that the sysvar account is rent-exempted.
 
     // create epoch rewards sysvar
     let expected_epoch_rewards = sysvar::epoch_rewards::EpochRewards::new(total_rewards, 10, 42);

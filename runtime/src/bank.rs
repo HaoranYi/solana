@@ -1897,12 +1897,9 @@ impl Bank {
         let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
 
         // create EpochRewards sysvar that holds the balance of undistributed rewards with
-        // (total_rewards, distributed_rewards, credit_end_exclusive)
+        // (total_rewards, distributed_rewards, credit_end_exclusive), total capital will increase by (total-rewards - distributed_rewards)
         info!("EpochRewards Start: {total_rewards} {distributed_rewards} {credit_end_exclusive}");
         self.create_epoch_rewards(total_rewards, distributed_rewards, credit_end_exclusive);
-
-        self.capitalization
-            .fetch_add(total_rewards - distributed_rewards, Relaxed);
     }
 
     /// Process reward distribution for the block if it is inside reward interval.
@@ -3879,14 +3876,14 @@ impl Bank {
 
             self.update_reward_history_in_partition(this_partition_stake_rewards);
 
-            // This is handled by sysvar.
-            // self.capitalization
-            //    .fetch_add(total_stake_rewards as u64, AcqRel);
+            // increase total capital by the distributed rewards
+            self.capitalization
+                .fetch_add(total_stake_rewards as u64, Relaxed);
+
+            // update EpochRewards sysvar with distributed rewards (decrease total capital by distributed rewards)
+            self.update_epoch_rewards(total_stake_rewards as u64);
 
             metrics.post_capitalization = self.capitalization();
-
-            // update EpochRewards sysvar
-            self.update_epoch_rewards(total_stake_rewards as u64);
 
             report_partitioned_reward_metrics(self, metrics);
         }
