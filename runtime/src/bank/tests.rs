@@ -12748,7 +12748,9 @@ fn test_get_epoch_reward_partition_range() {
 
 /// Test that reward partition range panics when passing out of range partition index
 #[test]
-#[should_panic]
+#[should_panic(
+    expected = "assertion failed: partition_index < self.get_reward_credit_num_blocks()"
+)]
 fn test_get_epoch_reward_partition_range_panic() {
     let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
     genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
