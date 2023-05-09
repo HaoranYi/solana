@@ -13089,6 +13089,38 @@ fn test_reward_accounts_lock() {
     assert!(reward_account_lock_hit);
 }
 
+/// Test `EpochRewards` sysvar creation, distribution, and burning.
+#[test]
+fn test_epoch_reward_sysvar() {
+    let (mut genesis_config, _mint_keypair) = create_genesis_config(1_000_000 * LAMPORTS_PER_SOL);
+    genesis_config.epoch_schedule = EpochSchedule::custom(432000, 432000, false);
+    let mut bank = Bank::new_for_tests(&genesis_config);
+    bank.set_partitioned_rewards_feature_enabled_for_tests(true);
+
+    let total_rewards = 1_000_000_000; // a large rewards so that the account is rent-exempted.
+
+    // create epoch rewards sysvar
+    let expected_epoch_rewards = sysvar::epoch_rewards::EpochRewards::new(total_rewards, 10, 42);
+    bank.create_epoch_rewards(total_rewards, 10, 42);
+    let account = bank.get_account(&sysvar::epoch_rewards::id()).unwrap();
+    assert_eq!(account.lamports(), total_rewards - 10);
+    let epoch_rewards: sysvar::epoch_rewards::EpochRewards = from_account(&account).unwrap();
+    assert_eq!(epoch_rewards, expected_epoch_rewards);
+
+    // make a distribution from epoch rewards sysvar
+    bank.update_epoch_rewards(10);
+    let account = bank.get_account(&sysvar::epoch_rewards::id()).unwrap();
+    assert_eq!(account.lamports(), total_rewards - 20);
+    let epoch_rewards: sysvar::epoch_rewards::EpochRewards = from_account(&account).unwrap();
+    let expected_epoch_rewards = sysvar::epoch_rewards::EpochRewards::new(total_rewards, 20, 42);
+    assert_eq!(epoch_rewards, expected_epoch_rewards);
+
+    // burn epoch rewards sysvar
+    bank.burn_and_purge_account(&sysvar::epoch_rewards::id(), account);
+    let account = bank.get_account(&sysvar::epoch_rewards::id());
+    assert!(account.is_none());
+}
+
 #[test]
 fn test_system_instruction_allocate() {
     let (genesis_config, mint_keypair) = create_genesis_config(sol_to_lamports(1.0));
