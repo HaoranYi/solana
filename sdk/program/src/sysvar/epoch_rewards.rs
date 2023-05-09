@@ -1,6 +1,11 @@
 //! Epoch rewards for current epoch
 //!
-//! The _epoch rewards_ sysvar provide access to the [`EpochRewards`] type.
+//! The _epoch rewards_ sysvar provide access to the [`EpochRewards`] type,
+//! which tracks the progress of epoch rewards distribution. It includes the
+//!   - total rewards for the current epoch, in lamports
+//!   - distributed rewards for the current epoch, in lamports, so far
+//!   - distribution completed block height, i.e. after this block height for distribution of all
+//!     staking rewards for the current epoch will be completed should have been completed.
 //!
 
 pub use crate::epoch_rewards::EpochRewards;
