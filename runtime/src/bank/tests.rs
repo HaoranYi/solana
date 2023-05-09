@@ -12862,6 +12862,8 @@ fn test_epoch_partitoned_reward_history_update() {
 /// Test reward compuation at the epoch boundary
 #[test]
 fn test_reward_computation() {
+    solana_logger::setup();
+
     // setup the expected number of stake delegations
     let expected_num = 100;
 
@@ -12907,8 +12909,13 @@ fn test_reward_computation() {
         // assert reward compute status clearance
         if slot == 33 {
             assert!(!bank.in_reward_interval());
+            // Total reward for this epoch is zero. When creating the EpochRewards sysvar, the
+            // default lamport set to 1. When rewards end, the extra 1 lamport in the sysvar should
+            // be burned. This will lead to that post_cap be less than pre_cap.
+            assert!(post_cap < pre_cap);
+        } else {
+            assert!(post_cap >= pre_cap);
         }
-        assert!(post_cap >= pre_cap);
         bank.freeze();
         bank_forks.insert(bank);
     }

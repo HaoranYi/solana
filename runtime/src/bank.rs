@@ -1928,10 +1928,10 @@ impl Bank {
                     ("activate", 0, i64),
                 );
 
-                if let Some(mut account) = self.get_account(&sysvar::epoch_rewards::id()) {
+                if let Some(account) = self.get_account(&sysvar::epoch_rewards::id()) {
                     if account.lamports() > 0 {
                         warn!(
-                            "burn {} extra lamports in EpochReward sysvar account slot {}",
+                            "burn {} extra lamports in EpochReward sysvar account at slot {}",
                             account.lamports(),
                             self.slot()
                         );
