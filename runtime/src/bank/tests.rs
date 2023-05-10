@@ -12859,22 +12859,89 @@ fn test_epoch_partitoned_reward_history_update() {
     );
 }
 
-/// Test rewards compuation and partitioned rewards distribution at the epoch boundary
+/// Test reward computation at epoch boundary
 #[test]
-fn test_rewards_computation_and_partitioned_distribution() {
+fn test_rewards_computation() {
     solana_logger::setup();
 
     // setup the expected number of stake delegations
-    let expected_num = 100;
+    let expected_num_delegations = 100;
 
-    let validator_keypairs = (0..expected_num)
+    let validator_keypairs = (0..expected_num_delegations)
         .map(|_| ValidatorVoteKeypairs::new_rand())
         .collect::<Vec<_>>();
 
     let GenesisConfigInfo { genesis_config, .. } = create_genesis_config_with_vote_accounts(
         1_000_000_000,
         &validator_keypairs,
-        vec![2_000_000_000; expected_num],
+        vec![2_000_000_000; expected_num_delegations],
+    );
+
+    let mut bank = Bank::new_for_tests(&genesis_config);
+
+    // Fill bank_forks with banks with votes landing in the next slot
+    // Create enough banks such that vote account will root
+    for validator_vote_keypairs in validator_keypairs.iter() {
+        let vote_id = validator_vote_keypairs.vote_keypair.pubkey();
+        let mut vote_account = bank.get_account(&vote_id).unwrap();
+        // generate some rewards
+        let mut vote_state = Some(vote_state::from(&vote_account).unwrap());
+        for i in 0..MAX_LOCKOUT_HISTORY + 42 {
+            if let Some(v) = vote_state.as_mut() {
+                vote_state::process_slot_vote_unchecked(v, i as u64)
+            }
+            let versioned = VoteStateVersions::Current(Box::new(vote_state.take().unwrap()));
+            vote_state::to(&versioned, &mut vote_account).unwrap();
+            match versioned {
+                VoteStateVersions::Current(v) => {
+                    vote_state = Some(*v);
+                }
+                _ => panic!("Has to be of type Current"),
+            };
+        }
+        bank.store_account_and_update_capitalization(&vote_id, &vote_account);
+    }
+
+    // Calculate rewards
+    let thread_pool = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+    let mut rewards_metrics = RewardsMetrics::default();
+    let expected_rewards = 100_000_000_000;
+
+    let RewardCalculationResult {
+        stake_rewards,
+        total_rewards: total_stake_rewards,
+    } = bank.do_calculate_validator_rewards_and_distribute_vote_rewards_with_thread_pool(
+        1,
+        expected_rewards,
+        null_tracer(),
+        true,
+        &thread_pool,
+        &mut rewards_metrics,
+    );
+
+    // assert that total rewards matches
+    assert_eq!(total_stake_rewards, expected_rewards);
+
+    // assert that number of rewards matches
+    assert_eq!(stake_rewards.unwrap().len(), expected_num_delegations);
+}
+
+/// Test rewards compuation and partitioned rewards distribution at the epoch boundary
+#[test]
+fn test_rewards_computation_and_partitioned_distribution() {
+    solana_logger::setup();
+
+    // setup the expected number of stake delegations
+    let expected_num_delegations = 100;
+
+    let validator_keypairs = (0..expected_num_delegations)
+        .map(|_| ValidatorVoteKeypairs::new_rand())
+        .collect::<Vec<_>>();
+
+    let GenesisConfigInfo { genesis_config, .. } = create_genesis_config_with_vote_accounts(
+        1_000_000_000,
+        &validator_keypairs,
+        vec![2_000_000_000; expected_num_delegations],
     );
 
     let bank0 = Bank::new_for_tests(&genesis_config);
