@@ -1867,7 +1867,7 @@ impl Bank {
             .calculate_rewards_and_distribute_vote_rewards_with_thread_pool(
                 parent_epoch,
                 reward_calc_tracer,
-                &thread_pool,
+                thread_pool,
                 rewards_metrics,
             );
 
@@ -1910,7 +1910,6 @@ impl Bank {
             let credit_start =
                 status.parent_start_block_height + 1 + Self::REWARD_CALCULATION_NUM_BLOCKS;
             let credit_end_exclusive = credit_start + self.get_reward_credit_num_blocks();
-            drop(status);
 
             if height >= credit_start && height < credit_end_exclusive {
                 let partition_index = height - credit_start;
