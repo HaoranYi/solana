@@ -12990,9 +12990,9 @@ fn test_rewards_computation_and_partitioned_distribution() {
             // assert stake rewards are paid at the first block after epoch boundary
             assert!(bank.in_reward_interval());
             assert_eq!(bank.get_reward_credit_num_blocks(), 1);
-            assert_eq!(post_cap, pre_cap + 1); // due to sysvar lamport bump up for rent_exemption
+            assert_eq!(post_cap, pre_cap + 1); // due to that default min lamport for sysvar is 1.
         } else if curr_slot == 34 {
-            // This is the 3nd block of epoch 1. Reward distribution should completed before this block.
+            // This is the 3nd block of epoch 1. Reward distribution should have completed.
             assert!(!bank.in_reward_interval());
             assert_eq!(post_cap, pre_cap - 1); // due to burning sysvar
         } else if slot > 0 {
