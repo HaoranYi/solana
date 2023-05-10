@@ -5,6 +5,8 @@
 //! The sysvar ID is declared in [`sysvar::epoch_rewards`].
 //!
 //! [`sysvar::epoch_rewards`]: crate::sysvar::epoch_rewards
+
+use std::ops::AddAssign;
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Default, Clone, AbiExample)]
 pub struct EpochRewards {
     // total rewards for the current epoch, in lamports
@@ -32,9 +34,9 @@ impl EpochRewards {
     }
 
     pub fn distribute(&mut self, amount: u64) {
-        assert!(self.distributed_rewards + amount <= self.total_rewards);
+        assert!(self.distributed_rewards.saturating_add(amount) <= self.total_rewards);
 
-        self.distributed_rewards += amount;
+        self.distributed_rewards.add_assign(amount);
     }
 }
 
