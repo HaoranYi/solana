@@ -880,9 +880,9 @@ impl AbiExample for OptionalDropCallback {
 #[derive(AbiExample, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StartBlockHeightAndRewards {
     /// the block height of the parent of the slot at which rewards distribution began
-    parent_start_block_height: u64,
+    pub(crate) parent_start_block_height: u64,
     /// calculated epoch rewards pending distribution
-    calculated_epoch_stake_rewards: Arc<StakeRewards>,
+    pub(crate) calculated_epoch_stake_rewards: Arc<StakeRewards>,
 }
 
 /// Represent whether bank is in the reward phase or not.
@@ -1503,6 +1503,11 @@ impl Bank {
             parent_start_block_height: parent_height,
             calculated_epoch_stake_rewards: Arc::new(stake_rewards),
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_epoch_reward_status_for_test(&self) -> &EpochRewardStatus {
+        &self.epoch_reward_status
     }
 
     /// Target to store 64 rewards per entry/tick in a block. A block has a minimal of 64
