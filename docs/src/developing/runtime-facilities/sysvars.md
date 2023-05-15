@@ -144,8 +144,10 @@ and de-activations per epoch. It is updated at the start of every epoch.
 
 ## EpochRewards
 
-The EpochRewards sysvar tracks the progress of epoch reward distribution. It is
-created at the first block of the epoch and last for serval blocks. When reward distribution completes, the sysvar is deleted.
+The EpochRewards sysvar tracks the progress of epoch reward distribution. The
+sysvar is created in the first block of the epoch, and lasts for serval blocks
+for paying out the rewards. When all rewards have been distributed, the sysvar
+will be deleted.
 
 - Address: `SysvarEpochReward51111111111111111111111111`
 - Layout:

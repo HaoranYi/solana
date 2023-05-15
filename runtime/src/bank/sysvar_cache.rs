@@ -48,6 +48,7 @@ mod tests {
         assert!(bank0_cached_fees.is_ok());
         assert!(bank0_cached_rent.is_ok());
         assert!(bank0_sysvar_cache.get_slot_hashes().is_err());
+        assert!(bank0_sysvar_cache.get_epoch_rewards().is_err());
 
         let bank1 = Arc::new(Bank::new_from_parent(
             &bank0,
@@ -66,6 +67,7 @@ mod tests {
         assert!(bank1_cached_fees.is_ok());
         assert!(bank1_cached_rent.is_ok());
         assert!(bank1_sysvar_cache.get_slot_hashes().is_ok());
+        assert!(bank1_sysvar_cache.get_epoch_rewards().is_err());
 
         assert_ne!(bank0_cached_clock, bank1_cached_clock);
         assert_eq!(bank0_cached_epoch_schedule, bank1_cached_epoch_schedule);
@@ -85,6 +87,7 @@ mod tests {
         assert!(bank2_cached_fees.is_ok());
         assert!(bank2_cached_rent.is_ok());
         assert!(bank2_sysvar_cache.get_slot_hashes().is_ok());
+        assert!(bank1_sysvar_cache.get_epoch_rewards().is_err());
 
         assert_ne!(bank1_cached_clock, bank2_cached_clock);
         assert_eq!(bank1_cached_epoch_schedule, bank2_cached_epoch_schedule);
@@ -109,12 +112,14 @@ mod tests {
         let bank1_cached_fees = bank1_sysvar_cache.get_fees();
         let bank1_cached_rent = bank1_sysvar_cache.get_rent();
         let bank1_cached_slot_hashes = bank1_sysvar_cache.get_slot_hashes();
+        let bank1_cached_epoch_rewards = bank1_sysvar_cache.get_epoch_rewards();
 
         assert!(bank1_cached_clock.is_ok());
         assert!(bank1_cached_epoch_schedule.is_ok());
         assert!(bank1_cached_fees.is_ok());
         assert!(bank1_cached_rent.is_ok());
         assert!(bank1_cached_slot_hashes.is_ok());
+        assert!(bank1_cached_epoch_rewards.is_err());
 
         drop(bank1_sysvar_cache);
         bank1.reset_sysvar_cache();
@@ -125,6 +130,7 @@ mod tests {
         assert!(bank1_sysvar_cache.get_fees().is_err());
         assert!(bank1_sysvar_cache.get_rent().is_err());
         assert!(bank1_sysvar_cache.get_slot_hashes().is_err());
+        assert!(bank1_sysvar_cache.get_epoch_rewards().is_err());
 
         drop(bank1_sysvar_cache);
         bank1.fill_missing_sysvar_cache_entries();
@@ -140,6 +146,10 @@ mod tests {
         assert_eq!(
             bank1_sysvar_cache.get_slot_hashes(),
             bank1_cached_slot_hashes
+        );
+        assert_eq!(
+            bank1_sysvar_cache.get_epoch_rewards(),
+            bank1_cached_epoch_rewards,
         );
     }
 }
