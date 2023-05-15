@@ -25,9 +25,13 @@ impl Bank {
 
 #[cfg(test)]
 mod tests {
+
     use {
         super::*,
-        solana_sdk::{genesis_config::create_genesis_config, pubkey::Pubkey},
+        solana_sdk::{
+            genesis_config::create_genesis_config, pubkey::Pubkey,
+            sysvar::epoch_rewards::EpochRewards,
+        },
         std::sync::Arc,
     };
 
@@ -104,7 +108,7 @@ mod tests {
     fn test_reset_and_fill_sysvar_cache() {
         let (genesis_config, _mint_keypair) = create_genesis_config(100_000);
         let bank0 = Arc::new(Bank::new_for_tests(&genesis_config));
-        let bank1 = Bank::new_from_parent(&bank0, &Pubkey::default(), bank0.slot() + 1);
+        let mut bank1 = Bank::new_from_parent(&bank0, &Pubkey::default(), bank0.slot() + 1);
 
         let bank1_sysvar_cache = bank1.sysvar_cache.read().unwrap();
         let bank1_cached_clock = bank1_sysvar_cache.get_clock();
@@ -133,6 +137,20 @@ mod tests {
         assert!(bank1_sysvar_cache.get_epoch_rewards().is_err());
 
         drop(bank1_sysvar_cache);
+
+        // inject a reward sysvar for test
+        bank1.set_partitioned_rewards_feature_enabled_for_tests(true);
+        let expected_epoch_rewards = EpochRewards {
+            total_rewards: 100,
+            distributed_rewards: 10,
+            distribution_complete_block_height: 42,
+        };
+        bank1.create_epoch_rewards(
+            expected_epoch_rewards.total_rewards,
+            expected_epoch_rewards.distributed_rewards,
+            expected_epoch_rewards.distribution_complete_block_height,
+        );
+
         bank1.fill_missing_sysvar_cache_entries();
 
         let bank1_sysvar_cache = bank1.sysvar_cache.read().unwrap();
@@ -147,9 +165,10 @@ mod tests {
             bank1_sysvar_cache.get_slot_hashes(),
             bank1_cached_slot_hashes
         );
+
         assert_eq!(
-            bank1_sysvar_cache.get_epoch_rewards(),
-            bank1_cached_epoch_rewards,
+            *bank1_sysvar_cache.get_epoch_rewards().unwrap(),
+            expected_epoch_rewards,
         );
     }
 }
