@@ -44,7 +44,7 @@
 //! # use solana_program::sysvar::SysvarId;
 //! # let p = EpochRewards::id();
 //! # let l = &mut 1120560;
-//! # let d = &mut vec![0, 202, 154, 59, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 0, 0]
+//! # let d = &mut vec![0, 202, 154, 59, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 0, 0];
 //! # let a = AccountInfo::new(&p, false, false, l, d, &p, false, 0);
 //! # let accounts = &[a.clone(), a];
 //! # process_instruction(
@@ -87,7 +87,7 @@
 //! # use solana_program::sysvar::SysvarId;
 //! # let p = EpochRewards::id();
 //! # let l = &mut 1120560;
-//! # let d = &mut vec![0, 202, 154, 59, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 0, 0]
+//! # let d = &mut vec![0, 202, 154, 59, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 0, 0];
 //! # let a = AccountInfo::new(&p, false, false, l, d, &p, false, 0);
 //! # let accounts = &[a.clone(), a];
 //! # process_instruction(
