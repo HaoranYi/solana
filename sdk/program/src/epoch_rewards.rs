@@ -7,17 +7,17 @@
 //! [`sysvar::epoch_rewards`]: crate::sysvar::epoch_rewards
 
 use std::ops::AddAssign;
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Default, Clone, AbiExample)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Default, Copy, Clone, AbiExample)]
 pub struct EpochRewards {
     // total rewards for the current epoch, in lamports
-    total_rewards: u64,
+    pub total_rewards: u64,
 
     // distributed rewards for  the current epoch, in lamports
-    distributed_rewards: u64,
+    pub distributed_rewards: u64,
 
     // distribution of all staking rewards for the current
     // epoch will be completed before this block height
-    distribution_complete_block_height: u64,
+    pub distribution_complete_block_height: u64,
 }
 
 impl EpochRewards {
