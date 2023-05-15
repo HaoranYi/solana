@@ -1480,8 +1480,9 @@ impl Bank {
     }
 
     fn partitioned_rewards_feature_enabled(&self) -> bool {
-        self.feature_set
-            .is_active(&enable_partitioned_epoch_reward::id())
+        //self.feature_set
+        //    .is_active(&enable_partitioned_epoch_reward::id())
+        true
     }
 
     #[cfg(test)]
@@ -1513,7 +1514,7 @@ impl Bank {
     /// Target to store 64 rewards per entry/tick in a block. A block has a minimal of 64
     /// entries/ticks. This gives 4096 total rewards to store in one block.
     /// This constant affects consensus.
-    const PARTITION_REWARDS_STORES_PER_BLOCK: u64 = 4096;
+    const PARTITION_REWARDS_STORES_PER_BLOCK: u64 = 1;
 
     /// Calculate the number of blocks required to store rewards in all accounts.
     fn get_reward_credit_num_blocks(&self) -> u64 {
@@ -5402,7 +5403,7 @@ impl Bank {
             self.in_reward_interval(),
             &program_accounts_map,
             &programs_loaded_for_tx_batch.borrow(),
-            self.slot() > 99273
+            self.slot() > 99273,
         );
         load_time.stop();
 
@@ -6454,7 +6455,8 @@ impl Bank {
     fn include_slot_in_hash(&self) -> IncludeSlotInHash {
         if self
             .feature_set
-            .is_active(&feature_set::account_hash_ignore_slot::id()) || self.slot() > 99273
+            .is_active(&feature_set::account_hash_ignore_slot::id())
+            || self.slot() > 99273
         {
             IncludeSlotInHash::RemoveSlot
         } else {
@@ -7931,7 +7933,7 @@ impl Bank {
         });
 
         let (verified_accounts, verify_accounts_time_us) = measure_us!({
-            let should_verify_accounts = false;// !self.rc.accounts.accounts_db.skip_initial_hash_calc;
+            let should_verify_accounts = false; // !self.rc.accounts.accounts_db.skip_initial_hash_calc;
             if should_verify_accounts {
                 info!("Verifying accounts...");
                 let verified = self.verify_accounts_hash(
