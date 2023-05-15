@@ -7,7 +7,7 @@
 //! [`sysvar::epoch_rewards`]: crate::sysvar::epoch_rewards
 
 use std::ops::AddAssign;
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Default, Copy, Clone, AbiExample)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Default, Copy, AbiExample)]
 pub struct EpochRewards {
     // total rewards for the current epoch, in lamports
     pub total_rewards: u64,
@@ -54,11 +54,11 @@ mod tests {
     }
 
     #[test]
-    fn test_epoch_rewards_clone() {
+    fn test_epoch_rewards_copy() {
         let epoch_rewards = EpochRewards::new(100, 0, 64);
-        let epoch_rewards_cloned = epoch_rewards.clone();
+        let epoch_rewards_copied = epoch_rewards;
 
-        assert_eq!(epoch_rewards, epoch_rewards_cloned);
+        assert_eq!(epoch_rewards, epoch_rewards_copied);
     }
 
     #[test]
