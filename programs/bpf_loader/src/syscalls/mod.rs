@@ -37,9 +37,8 @@ use {
             curve25519_syscall_enabled, disable_cpi_setting_executable_and_rent_epoch,
             disable_deploy_of_alloc_free_syscall, disable_fees_sysvar, enable_alt_bn128_syscall,
             enable_big_mod_exp_syscall, enable_early_verification_of_account_modifications,
-            enable_partitioned_epoch_reward,
-            error_on_syscall_bpf_function_hash_collisions, libsecp256k1_0_5_upgrade_enabled,
-            limit_secp256k1_recovery_id, reject_callx_r10,
+            enable_partitioned_epoch_reward, error_on_syscall_bpf_function_hash_collisions,
+            libsecp256k1_0_5_upgrade_enabled, limit_secp256k1_recovery_id, reject_callx_r10,
             stop_sibling_instruction_search_at_parent, stop_truncating_strings_in_syscalls,
             switch_to_new_elf_parser,
         },
@@ -185,14 +184,11 @@ pub fn create_loader<'a>(
     let blake3_syscall_enabled = feature_set.is_active(&blake3_syscall_enabled::id());
     let curve25519_syscall_enabled = feature_set.is_active(&curve25519_syscall_enabled::id());
     let disable_fees_sysvar = feature_set.is_active(&disable_fees_sysvar::id());
-<<<<<<< HEAD
     let epoch_rewards_syscall_enabled =
         feature_set.is_active(&enable_partitioned_epoch_reward::id());
     let is_abi_v2 = false;
-=======
     let disable_deploy_of_alloc_free_syscall = reject_deployment_of_broken_elfs
         && feature_set.is_active(&disable_deploy_of_alloc_free_syscall::id());
->>>>>>> jwash/kin_2023_may_16
 
     let mut result = BuiltInProgram::new_loader(config);
 
