@@ -1518,29 +1518,29 @@ impl Bank {
 
     /// Calculate the number of blocks required to store rewards in all accounts.
     fn get_reward_credit_num_blocks(&self) -> u64 {
-        if self.epoch_schedule.warmup && self.epoch < self.first_normal_epoch() {
-            1
+        //if self.epoch_schedule.warmup && self.epoch < self.first_normal_epoch() {
+        //    1
+        //} else {
+        let num_chunks = if let EpochRewardStatus::Active(StartBlockHeightAndRewards {
+            parent_start_block_height: _parent_start_block_height,
+            calculated_epoch_stake_rewards: ref stake_rewards,
+        }) = self.epoch_reward_status
+        {
+            crate::accounts_hash::AccountsHasher::div_ceil(
+                stake_rewards.len(),
+                Self::PARTITION_REWARDS_STORES_PER_BLOCK as usize,
+            ) as u64
         } else {
-            let num_chunks = if let EpochRewardStatus::Active(StartBlockHeightAndRewards {
-                parent_start_block_height: _parent_start_block_height,
-                calculated_epoch_stake_rewards: ref stake_rewards,
-            }) = self.epoch_reward_status
-            {
-                crate::accounts_hash::AccountsHasher::div_ceil(
-                    stake_rewards.len(),
-                    Self::PARTITION_REWARDS_STORES_PER_BLOCK as usize,
-                ) as u64
-            } else {
-                // To be consistent to the meaning of `num_chunks`. When stake_rewards is none. num_chunks = 0
-                // yeah. clamp to 1. Make sure that there is at least one block for reward credit.
-                // when we have sysvar account, we will need to do something after all rewards are distributed.
-                // Maybe we don't need to do anything. If that's the case, we can change to clamp to 0.
-                0
-            };
+            // To be consistent to the meaning of `num_chunks`. When stake_rewards is none. num_chunks = 0
+            // yeah. clamp to 1. Make sure that there is at least one block for reward credit.
+            // when we have sysvar account, we will need to do something after all rewards are distributed.
+            // Maybe we don't need to do anything. If that's the case, we can change to clamp to 0.
+            0
+        };
 
-            // Limit the reward credit interval to 5% of the total number of slots in a epoch
-            num_chunks.clamp(1, (self.epoch_schedule.slots_per_epoch / 20).max(1))
-        }
+        // Limit the reward credit interval to 5% of the total number of slots in a epoch
+        num_chunks.clamp(1, (self.epoch_schedule.slots_per_epoch / 20).max(1))
+        //}
     }
 
     /// Return the total number of blocks in reward interval (including both calculation and crediting).
