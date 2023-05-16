@@ -268,7 +268,7 @@ pub fn create_loader<'a>(
     register_feature_gated_function!(
         result,
         epoch_rewards_syscall_enabled,
-        "sol_get_epoch_rewrds_sysvar",
+        b"sol_get_epoch_rewrds_sysvar",
         SyscallGetEpochRewardsSysvar::call,
     )?;
 
