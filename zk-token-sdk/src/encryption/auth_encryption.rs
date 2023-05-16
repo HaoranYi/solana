@@ -3,15 +3,16 @@
 //! This module is a simple wrapper of the `Aes128GcmSiv` implementation.
 #[cfg(not(target_os = "solana"))]
 use {
-    crate::encryption::errors::AuthenticatedEncryptionError,
     aes_gcm_siv::{
         aead::{Aead, NewAead},
         Aes128GcmSiv,
     },
     rand::{rngs::OsRng, CryptoRng, Rng, RngCore},
+    thiserror::Error,
 };
 use {
     arrayref::{array_ref, array_refs},
+    base64::{prelude::BASE64_STANDARD, Engine},
     sha3::{Digest, Sha3_512},
     solana_sdk::{
         derivation_path::DerivationPath,
@@ -32,6 +33,15 @@ use {
     subtle::ConstantTimeEq,
     zeroize::Zeroize,
 };
+
+#[derive(Error, Clone, Debug, Eq, PartialEq)]
+pub enum AuthenticatedEncryptionError {
+    #[error("key derivation method not supported")]
+    DerivationMethodNotSupported,
+
+    #[error("pubkey does not exist")]
+    PubkeyDoesNotExist,
+}
 
 struct AuthenticatedEncryption;
 impl AuthenticatedEncryption {
@@ -189,7 +199,7 @@ impl AeCiphertext {
 
 impl fmt::Display for AeCiphertext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", base64::encode(self.to_bytes()))
+        write!(f, "{}", BASE64_STANDARD.encode(self.to_bytes()))
     }
 }
 

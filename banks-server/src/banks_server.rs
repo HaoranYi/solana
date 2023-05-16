@@ -85,8 +85,18 @@ impl BanksServer {
                 .into_iter()
                 .map(|info| deserialize(&info.wire_transaction).unwrap())
                 .collect();
-            let bank = bank_forks.read().unwrap().working_bank();
-            let _ = bank.try_process_transactions(transactions.iter());
+            loop {
+                let bank = bank_forks.read().unwrap().working_bank();
+                // bank forks lock released, now verify bank hasn't been frozen yet
+                // in the mean-time the bank can not be frozen until this tx batch
+                // has been processed
+                let lock = bank.freeze_lock();
+                if *lock == Hash::default() {
+                    let _ = bank.try_process_transactions(transactions.iter());
+                    // break out of inner loop and release bank freeze lock
+                    break;
+                }
+            }
         }
     }
 
@@ -251,7 +261,7 @@ impl Banks for BanksServer {
             optimistically_confirmed_bank.get_signature_status_slot(&signature);
 
         let confirmations = if r_block_commitment_cache.root() >= slot
-            && r_block_commitment_cache.highest_confirmed_root() >= slot
+            && r_block_commitment_cache.highest_super_majority_root() >= slot
         {
             None
         } else {

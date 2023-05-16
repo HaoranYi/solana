@@ -1247,14 +1247,14 @@ impl Accounts {
     pub fn lock_accounts_with_results<'a>(
         &self,
         txs: impl Iterator<Item = &'a SanitizedTransaction>,
-        results: impl Iterator<Item = &'a Result<()>>,
+        results: impl Iterator<Item = Result<()>>,
         tx_account_lock_limit: usize,
     ) -> Vec<Result<()>> {
         let tx_account_locks_results: Vec<Result<_>> = txs
             .zip(results)
             .map(|(tx, result)| match result {
                 Ok(()) => tx.get_account_locks(tx_account_lock_limit),
-                Err(err) => Err(err.clone()),
+                Err(err) => Err(err),
             })
             .collect();
         self.lock_accounts_inner(tx_account_locks_results)
@@ -1342,7 +1342,7 @@ impl Accounts {
                     let mut src_account = AccountSharedData::default();
                     src_account.set_lamports(1_000_000_000);
                     let mut pk = accounts_to_store[i].0.clone();
-                    const NUM_DUPLICATES: usize = 100;
+                    const NUM_DUPLICATES: usize = 10;
                     for _duplicates in 0..NUM_DUPLICATES {
                         // only add this if it doesn't already exist in the index
                         let mut hasher = Hasher::default();
@@ -1378,7 +1378,7 @@ impl Accounts {
                 ("count", pks.len(), i64),
                 ("total_us", us, i64),
             );
-            
+
             let additional = pks
                 .iter()
                 .map(|(k, account)| (k, account))
@@ -3236,7 +3236,7 @@ mod tests {
 
         let results = accounts.lock_accounts_with_results(
             txs.iter(),
-            qos_results.iter(),
+            qos_results.into_iter(),
             MAX_TX_ACCOUNT_LOCKS,
         );
 

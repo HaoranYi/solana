@@ -103,7 +103,7 @@ use {
         },
         log_collector::LogCollector,
         sysvar_cache::SysvarCache,
-        timings::{ExecuteTimingType, ExecuteTimings},
+        timings::{ExecuteDetailsTimings, ExecuteTimingType, ExecuteTimings},
     },
     solana_sdk::{
         account::{
@@ -139,7 +139,7 @@ use {
         inflation::Inflation,
         instruction::{CompiledInstruction, TRANSACTION_LEVEL_STACK_HEIGHT},
         lamports::LamportsError,
-        loader_v3,
+        loader_v4,
         message::{AccountKeys, SanitizedMessage},
         native_loader,
         native_token::{sol_to_lamports, LAMPORTS_PER_SOL},
@@ -1778,6 +1778,13 @@ impl Bank {
                 fill_sysvar_cache_time_us,
             },
         );
+
+        parent
+            .loaded_programs_cache
+            .read()
+            .unwrap()
+            .stats
+            .submit(parent.slot());
 
         new
     }
@@ -4069,8 +4076,8 @@ impl Bank {
 
     pub fn freeze(&self) {
         // This lock prevents any new commits from BankingStage
-        // `process_and_record_transactions_locked()` from coming
-        // in after the last tick is observed. This is because in
+        // `Consumer::execute_and_commit_transactions_locked()` from
+        // coming in after the last tick is observed. This is because in
         // BankingStage, any transaction successfully recorded in
         // `record_transactions()` is recorded after this `hash` lock
         // is grabbed. At the time of the successful record,
@@ -4647,7 +4654,7 @@ impl Bank {
     pub fn prepare_sanitized_batch_with_results<'a, 'b>(
         &'a self,
         transactions: &'b [SanitizedTransaction],
-        transaction_results: impl Iterator<Item = &'b Result<()>>,
+        transaction_results: impl Iterator<Item = Result<()>>,
     ) -> TransactionBatch<'a, 'b> {
         // this lock_results could be: Ok, AccountInUse, WouldExceedBlockMaxLimit or WouldExceedAccountMaxLimit
         let tx_account_lock_limit = self.get_transaction_account_lock_limit();
@@ -4970,8 +4977,8 @@ impl Bank {
                 }
             }
             Err(TransactionError::ProgramAccountNotFound)
-        } else if loader_v3::check_id(program.owner()) {
-            let state = solana_loader_v3_program::get_state(program.data())
+        } else if loader_v4::check_id(program.owner()) {
+            let state = solana_loader_v4_program::get_state(program.data())
                 .map_err(|_| TransactionError::ProgramAccountNotFound)?;
             Ok(state.slot)
         } else {
@@ -5044,7 +5051,11 @@ impl Bank {
             programdata.as_ref().unwrap_or(&program),
             debugging_features,
         )
-        .map(|(loaded_program, _create_executor_metrics)| loaded_program)
+        .map(|(loaded_program, metrics)| {
+            let mut timings = ExecuteDetailsTimings::default();
+            metrics.submit_datapoint(&mut timings);
+            loaded_program
+        })
         .map_err(|err| TransactionError::InstructionError(0, err))
     }
 
@@ -6452,7 +6463,8 @@ impl Bank {
     }
 
     /// true if we should include the slot in account hash
-    fn include_slot_in_hash(&self) -> IncludeSlotInHash {
+    /// This is governed by a feature.
+    pub(crate) fn include_slot_in_hash(&self) -> IncludeSlotInHash {
         if self
             .feature_set
             .is_active(&feature_set::account_hash_ignore_slot::id())
@@ -7550,6 +7562,7 @@ impl Bank {
         let cap = self.capitalization();
         let epoch_schedule = self.epoch_schedule();
         let rent_collector = self.rent_collector();
+        let include_slot_in_hash = self.include_slot_in_hash();
         if config.run_in_background {
             let ancestors = ancestors.clone();
             let accounts = Arc::clone(accounts);
@@ -7575,6 +7588,7 @@ impl Bank {
                                 ignore_mismatch: config.ignore_mismatch,
                                 store_detailed_debug_info: config.store_hash_raw_data_for_debug,
                                 use_bg_thread_pool: true,
+                                include_slot_in_hash,
                             },
                         );
                         accounts_
@@ -7599,6 +7613,7 @@ impl Bank {
                     ignore_mismatch: config.ignore_mismatch,
                     store_detailed_debug_info: config.store_hash_raw_data_for_debug,
                     use_bg_thread_pool: false, // fg is waiting for this to run, so we can use the fg thread pool
+                    include_slot_in_hash,
                 },
             );
             self.set_initial_accounts_hash_verification_completed();
@@ -7736,6 +7751,7 @@ impl Bank {
                 self.epoch_schedule(),
                 &self.rent_collector,
                 is_startup,
+                self.include_slot_in_hash(),
             )
             .1
     }
@@ -7824,6 +7840,7 @@ impl Bank {
             self.epoch_schedule(),
             &self.rent_collector,
             is_startup,
+            self.include_slot_in_hash(),
         );
         if total_lamports != self.capitalization() {
             datapoint_info!(
@@ -7846,6 +7863,7 @@ impl Bank {
                     self.epoch_schedule(),
                     &self.rent_collector,
                     is_startup,
+                    self.include_slot_in_hash(),
                 );
             }
 
@@ -7872,6 +7890,7 @@ impl Bank {
             epoch_schedule: &self.epoch_schedule,
             rent_collector: &self.rent_collector,
             store_detailed_debug_info_on_failure: false,
+            include_slot_in_hash: self.include_slot_in_hash(),
         };
         let storages = self.get_snapshot_storages(Some(base_slot));
         let sorted_storages = SortedStorages::new(&storages);

@@ -1,6 +1,6 @@
 use {
     crate::{args::*, ledger_utils::*},
-    clap::{value_t, App, Arg, ArgMatches, SubCommand},
+    clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand},
     log::*,
     serde::{Deserialize, Serialize},
     serde_json::Result,
@@ -22,7 +22,7 @@ use {
     },
     solana_rbpf::{
         assembler::assemble, elf::Executable, static_analysis::Analysis,
-        verifier::RequisiteVerifier, vm::VerifiedExecutable,
+        verifier::RequisiteVerifier,
     },
     solana_runtime::{bank::Bank, runtime_config::RuntimeConfig},
     solana_sdk::{
@@ -44,6 +44,10 @@ use {
         time::{Duration, Instant},
     },
 };
+
+// The ELF magic number [ELFMAG0, ELFMAG1, ELFGMAG2, ELFMAG3] as defined by
+// https://github.com/torvalds/linux/blob/master/include/uapi/linux/elf.h
+const ELF_MAGIC_NUMBER: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Account {
@@ -131,18 +135,52 @@ fn load_blockstore(ledger_path: &Path, arg_matches: &ArgMatches<'_>) -> Arc<Bank
     bank
 }
 
-pub trait RunSubCommand {
-    fn run_subcommand(self) -> Self;
+pub trait ProgramSubCommand {
+    fn program_subcommand(self) -> Self;
 }
 
-impl RunSubCommand for App<'_, '_> {
-    fn run_subcommand(self) -> Self {
+impl ProgramSubCommand for App<'_, '_> {
+    fn program_subcommand(self) -> Self {
+        let program_arg = Arg::with_name("PROGRAM")
+            .help(
+                "Program file to use. This is either an ELF shared-object file to be executed, \
+                 or an assembly file to be assembled and executed.",
+            )
+            .required(true)
+            .index(1);
+        let max_genesis_arg = Arg::with_name("max_genesis_archive_unpacked_size")
+            .long("max-genesis-archive-unpacked-size")
+            .value_name("NUMBER")
+            .takes_value(true)
+            .default_value("10485760")
+            .help("maximum total uncompressed size of unpacked genesis archive");
         self.subcommand(
+            SubCommand::with_name("program")
+        .about("Run to test, debug, and analyze on-chain programs.")
+        .setting(AppSettings::InferSubcommands)
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand(
+            SubCommand::with_name("cfg")
+                .about("generates Control Flow Graph of the program.")
+                .arg(&max_genesis_arg)
+                .arg(&program_arg)
+        )
+        .subcommand(
+            SubCommand::with_name("disassemble")
+                .about("dumps disassembled code of the program.")
+                .arg(&max_genesis_arg)
+                .arg(&program_arg)
+        )
+        .subcommand(
             SubCommand::with_name("run")
-        .about(
-            r##"Run to test, debug, and analyze on-chain programs.
-
-The tool executes on-chain programs in a mocked environment.
+                .about(
+                    "The command executes on-chain programs in a mocked environment.",
+                )
+                .arg(
+                    Arg::with_name("input")
+                        .help(
+                            r##"Input for the program to run on, where FILE is a name of a JSON file
+with input data, or BYTES is the number of 0-valued bytes to allocate for program parameters"
 
 The input data for a program execution have to be in JSON format
 and the following fields are required
@@ -161,84 +199,63 @@ and the following fields are required
     "instruction_data": [31, 32, 23, 24]
 }
 "##,
-        )
-        .arg(
-            Arg::with_name("PROGRAM")
-                .help(
-                    "Program file to use. This is either an ELF shared-object file to be executed, \
-                     or an assembly file to be assembled and executed.",
+                        )
+                        .short("i")
+                        .long("input")
+                        .value_name("FILE / BYTES")
+                        .takes_value(true)
+                        .default_value("0"),
                 )
-                .required(true)
-                .index(1)
-        )
-        .arg(
-            Arg::with_name("input")
-                .help(
-                    "Input for the program to run on, where FILE is a name of a JSON file \
-with input data, or BYTES is the number of 0-valued bytes to allocate for program parameters",
+                .arg(&max_genesis_arg)
+                .arg(
+                    Arg::with_name("memory")
+                        .help("Heap memory for the program to run on")
+                        .short("m")
+                        .long("memory")
+                        .value_name("BYTES")
+                        .takes_value(true)
+                        .default_value("0"),
                 )
-                .short("i")
-                .long("input")
-                .value_name("FILE / BYTES")
-                .takes_value(true)
-                .default_value("0"),
-        )
-        .arg(
-            Arg::with_name("memory")
-                .help("Heap memory for the program to run on")
-                .short("m")
-                .long("memory")
-                .value_name("BYTES")
-                .takes_value(true)
-                .default_value("0"),
-        )
-        .arg(
-            Arg::with_name("use")
-                .help(
-                    "Method of execution to use, where 'cfg' generates Control Flow Graph \
-of the program, 'disassembler' dumps disassembled code of the program, 'interpreter' runs \
-the program in the virtual machine's interpreter, 'debugger' is the same as 'interpreter' \
-but hosts a GDB interface, and 'jit' precompiles the program to native machine code \
-before execting it in the virtual machine.",
+                .arg(
+                    Arg::with_name("mode")
+                        .help(
+                            "Mode of execution, where 'interpreter' runs \
+                             the program in the virtual machine's interpreter, 'debugger' is the same as 'interpreter' \
+                             but hosts a GDB interface, and 'jit' precompiles the program to native machine code \
+                             before execting it in the virtual machine.",
+                        )
+                        .short("e")
+                        .long("mode")
+                        .takes_value(true)
+                        .value_name("VALUE")
+                        .possible_values(&["interpreter", "debugger", "jit"])
+                        .default_value("jit"),
                 )
-                .short("u")
-                .long("use")
-                .takes_value(true)
-                .value_name("VALUE")
-                .possible_values(&["cfg", "disassembler", "interpreter", "debugger", "jit"])
-                .default_value("jit"),
-        )
-        .arg(
-            Arg::with_name("instruction limit")
-                .help("Limit the number of instructions to execute")
-                .long("limit")
-                .takes_value(true)
-                .value_name("COUNT")
-                .default_value("9223372036854775807"),
-        )
-        .arg(
-            Arg::with_name("max_genesis_archive_unpacked_size")
-                .long("max-genesis-archive-unpacked-size")
-                .value_name("NUMBER")
-                .takes_value(true)
-                .default_value("10485760")
-                .help("maximum total uncompressed size of unpacked genesis archive")
-        )
-        .arg(
-            Arg::with_name("port")
-                .help("Port to use for the connection with a remote debugger")
-                .long("port")
-                .takes_value(true)
-                .value_name("PORT")
-                .default_value("9001"),
-        )
-        .arg(
-            Arg::with_name("trace")
-                .help("Output instruction trace")
-                .short("t")
-                .long("trace")
-                .takes_value(true)
-                .value_name("FILE"),
+                .arg(
+                    Arg::with_name("instruction limit")
+                        .help("Limit the number of instructions to execute")
+                        .long("limit")
+                        .takes_value(true)
+                        .value_name("COUNT")
+                        .default_value("9223372036854775807"),
+                )
+                .arg(
+                    Arg::with_name("port")
+                        .help("Port to use for the connection with a remote debugger")
+                        .long("port")
+                        .takes_value(true)
+                        .value_name("PORT")
+                        .default_value("9001"),
+                )
+                .arg(
+                    Arg::with_name("trace")
+                        .help("Output instruction trace")
+                        .short("t")
+                        .long("trace")
+                        .takes_value(true)
+                        .value_name("FILE"),
+                )
+                .arg(&program_arg)
         )
         )
     }
@@ -268,11 +285,11 @@ impl Debug for Output {
 // https://github.com/rust-lang/rust/issues/74465
 struct LazyAnalysis<'a, 'b> {
     analysis: Option<Analysis<'a>>,
-    executable: &'a Executable<InvokeContext<'b>>,
+    executable: &'a Executable<RequisiteVerifier, InvokeContext<'b>>,
 }
 
 impl<'a, 'b> LazyAnalysis<'a, 'b> {
-    fn new(executable: &'a Executable<InvokeContext<'b>>) -> Self {
+    fn new(executable: &'a Executable<RequisiteVerifier, InvokeContext<'b>>) -> Self {
         Self {
             analysis: None,
             executable,
@@ -311,7 +328,108 @@ fn output_trace(
     }
 }
 
-pub fn run(ledger_path: &Path, matches: &ArgMatches<'_>) {
+fn load_program<'a>(
+    filename: &Path,
+    program_id: Pubkey,
+    invoke_context: &InvokeContext<'a>,
+) -> Executable<RequisiteVerifier, InvokeContext<'a>> {
+    let mut file = File::open(filename).unwrap();
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic).unwrap();
+    file.rewind().unwrap();
+    let is_elf = magic == ELF_MAGIC_NUMBER;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents).unwrap();
+    let slot = Slot::default();
+    let reject_deployment_of_broken_elfs = false;
+    let debugging_features = true;
+    let log_collector = invoke_context.get_log_collector();
+    let loader_key = bpf_loader_upgradeable::id();
+    let mut load_program_metrics = LoadProgramMetrics {
+        program_id: program_id.to_string(),
+        ..LoadProgramMetrics::default()
+    };
+    let account_size = contents.len();
+    let mut verified_executable = if is_elf {
+        let result = load_program_from_bytes(
+            &invoke_context.feature_set,
+            invoke_context.get_compute_budget(),
+            log_collector,
+            &mut load_program_metrics,
+            &contents,
+            &loader_key,
+            account_size,
+            slot,
+            reject_deployment_of_broken_elfs,
+            debugging_features,
+        );
+        match result {
+            Ok(loaded_program) => match loaded_program.program {
+                LoadedProgramType::LegacyV1(program) => Ok(unsafe { std::mem::transmute(program) }),
+                _ => unreachable!(),
+            },
+            Err(err) => Err(format!("Loading executable failed: {err:?}")),
+        }
+    } else {
+        let loader = create_loader(
+            &invoke_context.feature_set,
+            invoke_context.get_compute_budget(),
+            true,
+            true,
+        )
+        .unwrap();
+        let executable =
+            assemble::<InvokeContext>(std::str::from_utf8(contents.as_slice()).unwrap(), loader)
+                .unwrap();
+        Executable::<RequisiteVerifier, InvokeContext>::verified(executable)
+            .map_err(|err| format!("Assembling executable failed: {err:?}"))
+    }
+    .unwrap();
+    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+    verified_executable.jit_compile().unwrap();
+    verified_executable
+}
+
+enum Action {
+    Cfg,
+    Dis,
+}
+
+fn process_static_action(action: Action, matches: &ArgMatches<'_>) {
+    let transaction_accounts = Vec::new();
+    let program_id = Pubkey::new_unique();
+    with_mock_invoke_context!(invoke_context, transaction_context, transaction_accounts);
+    let program = matches.value_of("PROGRAM").unwrap();
+    let verified_executable = load_program(Path::new(program), program_id, &invoke_context);
+    let mut analysis = LazyAnalysis::new(&verified_executable);
+    match action {
+        Action::Cfg => {
+            let mut file = File::create("cfg.dot").unwrap();
+            analysis
+                .analyze()
+                .visualize_graphically(&mut file, None)
+                .unwrap();
+        }
+        Action::Dis => {
+            let stdout = std::io::stdout();
+            analysis.analyze().disassemble(&mut stdout.lock()).unwrap();
+        }
+    };
+}
+
+pub fn program(ledger_path: &Path, matches: &ArgMatches<'_>) {
+    let matches = match matches.subcommand() {
+        ("cfg", Some(arg_matches)) => {
+            process_static_action(Action::Cfg, arg_matches);
+            return;
+        }
+        ("disassemble", Some(arg_matches)) => {
+            process_static_action(Action::Dis, arg_matches);
+            return;
+        }
+        ("run", Some(arg_matches)) => arg_matches,
+        _ => unreachable!(),
+    };
     let bank = load_blockstore(ledger_path, matches);
     let loader_id = bpf_loader_upgradeable::id();
     let mut transaction_accounts = Vec::new();
@@ -410,7 +528,7 @@ pub fn run(ledger_path: &Path, matches: &ArgMatches<'_>) {
         program_id, // ID of the loaded program. It can modify accounts with the same owner key
         AccountSharedData::new(0, 0, &loader_id),
     ));
-    let interpreted = matches.value_of("use").unwrap() != "jit";
+    let interpreted = matches.value_of("mode").unwrap() != "jit";
     with_mock_invoke_context!(
         invoke_context,
         transaction_context,
@@ -457,81 +575,8 @@ pub fn run(ledger_path: &Path, matches: &ArgMatches<'_>) {
     .unwrap();
 
     let program = matches.value_of("PROGRAM").unwrap();
-    let mut file = File::open(Path::new(program)).unwrap();
-    let mut magic = [0u8; 4];
-    file.read_exact(&mut magic).unwrap();
-    file.rewind().unwrap();
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents).unwrap();
-
-    let slot = Slot::default();
-    let reject_deployment_of_broken_elfs = false;
-    let debugging_features = true;
-    let log_collector = invoke_context.get_log_collector();
-    let loader_key = bpf_loader_upgradeable::id();
-    let mut load_program_metrics = LoadProgramMetrics {
-        program_id: program_id.to_string(),
-        ..LoadProgramMetrics::default()
-    };
-    let account_size = contents.len();
-    #[allow(unused_mut)]
-    let mut verified_executable = if magic == [0x7f, 0x45, 0x4c, 0x46] {
-        let result = load_program_from_bytes(
-            &invoke_context.feature_set,
-            invoke_context.get_compute_budget(),
-            log_collector,
-            &mut load_program_metrics,
-            &contents,
-            &loader_key,
-            account_size,
-            slot,
-            reject_deployment_of_broken_elfs,
-            debugging_features,
-        );
-        match result {
-            Ok(loaded_program) => match loaded_program.program {
-                LoadedProgramType::LegacyV1(program) => Ok(unsafe { std::mem::transmute(program) }),
-                _ => unreachable!(),
-            },
-            Err(err) => Err(format!("Loading executable failed: {err:?}")),
-        }
-    } else {
-        let loader = create_loader(
-            &invoke_context.feature_set,
-            invoke_context.get_compute_budget(),
-            true,
-            true,
-            true,
-        )
-        .unwrap();
-        let executable =
-            assemble::<InvokeContext>(std::str::from_utf8(contents.as_slice()).unwrap(), loader)
-                .unwrap();
-        VerifiedExecutable::<RequisiteVerifier, InvokeContext>::from_executable(executable)
-            .map_err(|err| format!("Assembling executable failed: {err:?}"))
-    }
-    .unwrap();
-
-    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
-    verified_executable.jit_compile().unwrap();
-    let mut analysis = LazyAnalysis::new(verified_executable.get_executable());
-
-    match matches.value_of("use") {
-        Some("cfg") => {
-            let mut file = File::create("cfg.dot").unwrap();
-            analysis
-                .analyze()
-                .visualize_graphically(&mut file, None)
-                .unwrap();
-            return;
-        }
-        Some("disassembler") => {
-            let stdout = std::io::stdout();
-            analysis.analyze().disassemble(&mut stdout.lock()).unwrap();
-            return;
-        }
-        _ => {}
-    }
+    let verified_executable = load_program(Path::new(program), program_id, &invoke_context);
+    let mut analysis = LazyAnalysis::new(&verified_executable);
     create_vm!(
         vm,
         &verified_executable,
@@ -541,7 +586,7 @@ pub fn run(ledger_path: &Path, matches: &ArgMatches<'_>) {
     );
     let mut vm = vm.unwrap();
     let start_time = Instant::now();
-    if matches.value_of("use").unwrap() == "debugger" {
+    if matches.value_of("mode").unwrap() == "debugger" {
         vm.debug_port = Some(matches.value_of("port").unwrap().parse::<u16>().unwrap());
     }
     let (instruction_count, result) = vm.execute_program(interpreted);

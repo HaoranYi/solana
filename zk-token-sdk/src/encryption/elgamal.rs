@@ -16,9 +16,9 @@
 use {
     crate::encryption::{
         discrete_log::DiscreteLog,
-        errors::ElGamalError,
         pedersen::{Pedersen, PedersenCommitment, PedersenOpening, G, H},
     },
+    base64::{prelude::BASE64_STANDARD, Engine},
     core::ops::{Add, Mul, Sub},
     curve25519_dalek::{
         ristretto::{CompressedRistretto, RistrettoPoint},
@@ -39,6 +39,7 @@ use {
     },
     std::convert::TryInto,
     subtle::{Choice, ConstantTimeEq},
+    thiserror::Error,
     zeroize::Zeroize,
 };
 #[cfg(not(target_os = "solana"))]
@@ -51,6 +52,12 @@ use {
         path::Path,
     },
 };
+
+#[derive(Error, Clone, Debug, Eq, PartialEq)]
+pub enum ElGamalError {
+    #[error("key derivation method not supported")]
+    DerivationMethodNotSupported,
+}
 
 /// Algorithm handle for the twisted ElGamal encryption scheme
 pub struct ElGamal;
@@ -323,7 +330,7 @@ impl ElGamalPubkey {
 
 impl fmt::Display for ElGamalPubkey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", base64::encode(self.to_bytes()))
+        write!(f, "{}", BASE64_STANDARD.encode(self.to_bytes()))
     }
 }
 
@@ -490,7 +497,7 @@ impl ElGamalCiphertext {
 
 impl fmt::Display for ElGamalCiphertext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", base64::encode(self.to_bytes()))
+        write!(f, "{}", BASE64_STANDARD.encode(self.to_bytes()))
     }
 }
 
