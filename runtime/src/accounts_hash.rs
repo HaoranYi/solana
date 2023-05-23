@@ -16,6 +16,7 @@ use {
         sysvar::epoch_schedule::EpochSchedule,
     },
     std::{
+        path::PathBuf,
         borrow::Borrow,
         convert::TryInto,
         fs::File,
@@ -25,7 +26,7 @@ use {
             Arc, Mutex,
         },
     },
-    tempfile::tempfile,
+    tempfile::tempfile_in,
 };
 pub const MERKLE_FANOUT: usize = 16;
 
@@ -51,10 +52,10 @@ impl MmapAccountHashesFile {
 }
 
 /// 1 file containing account hashes sorted by pubkey
-#[derive(Default)]
 pub struct AccountHashesFile {
     /// # hashes and an open file that will be deleted on drop. None if there are zero hashes to represent, and thus, no file.
     count_and_writer: Option<(usize, BufWriter<File>)>,
+    temp_path: PathBuf,
 }
 
 impl AccountHashesFile {
@@ -84,7 +85,7 @@ impl AccountHashesFile {
     pub fn write(&mut self, hash: &Hash) {
         if self.count_and_writer.is_none() {
             // we have hashes to write but no file yet, so create a file that will auto-delete on drop
-            self.count_and_writer = Some((0, BufWriter::new(tempfile().unwrap())));
+            self.count_and_writer = Some((0, BufWriter::new(tempfile_in(self.temp_path.clone()).unwrap())));
         }
         let mut count_and_writer = self.count_and_writer.as_mut().unwrap();
         assert_eq!(
@@ -452,11 +453,12 @@ impl CumulativeOffsets {
 }
 
 #[derive(Debug)]
-pub struct AccountsHasher {
+pub(crate) struct AccountsHasher {
     pub filler_account_suffix: Option<Pubkey>,
     pub zero_lamport_accounts: ZeroLamportAccounts,
+    pub temp_file_path: PathBuf,
 }
-
+/*
 impl Default for AccountsHasher {
     fn default() -> Self {
         Self {
@@ -464,7 +466,7 @@ impl Default for AccountsHasher {
             zero_lamport_accounts: ZeroLamportAccounts::Excluded,
         }
     }
-}
+}*/
 
 impl AccountsHasher {
     /// true if it is possible that there are filler accounts present
@@ -931,7 +933,10 @@ impl AccountsHasher {
         // map from index of an item in first_items[] to index of the corresponding item in pubkey_division[]
         // this will change as items in pubkey_division[] are exhausted
         let mut first_item_to_pubkey_division = Vec::with_capacity(len);
-        let mut hashes = AccountHashesFile::default();
+        let mut hashes = AccountHashesFile {
+            temp_path: self.temp_file_path.clone(),
+            count_and_writer: None,
+        };
         // initialize 'first_items', which holds the current lowest item in each slot group
         pubkey_division.iter().enumerate().for_each(|(i, bins)| {
             // check to make sure we can do bins[pubkey_bin]

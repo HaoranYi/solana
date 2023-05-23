@@ -52,7 +52,7 @@ use {
             get_ancient_append_vec_capacity, is_ancient, AccountsToStore, StorageSelector,
         },
         append_vec::{
-            aligned_stored_size, AppendVec, MatchAccountOwnerError, APPEND_VEC_MMAPPED_FILES_OPEN,
+            aligned_stored_size, AppendVec, MatchAccountOwnerError, APPEND_VEC_MMAPPED_FILES_OPEN, APPEND_VEC_MMAPPED_FILES_OPENED,APPEND_VEC_MMAPPED_FILES_CLOSED,
             STORE_META_OVERHEAD,
         },
         bank_creation_freezing_progress::BankCreationFreezingProgress,
@@ -163,9 +163,9 @@ lazy_static! {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum CreateAncientStorage {
     /// ancient storages are created by appending
-    #[default]
     Append,
     /// ancient storages are created by 1-shot write to pack multiple accounts together more efficiently with new formats
+    #[default]
     Pack,
 }
 
@@ -1888,6 +1888,16 @@ impl LatestAccountsIndexRootsStats {
                 "append_vecs_open",
                 APPEND_VEC_MMAPPED_FILES_OPEN.load(Ordering::Relaxed) as i64,
                 i64
+            ),
+            (
+                "append_vecs_opened",
+                APPEND_VEC_MMAPPED_FILES_OPENED.swap(0, Ordering::Relaxed) as i64,
+                i64
+            ),
+            (
+                "append_vecs_closed",
+                APPEND_VEC_MMAPPED_FILES_CLOSED.swap(0, Ordering::Relaxed) as i64,
+                i64
             )
         );
 
@@ -2513,7 +2523,7 @@ impl AccountsDb {
         let create_ancient_storage = accounts_db_config
             .as_ref()
             .map(|config| config.create_ancient_storage)
-            .unwrap_or(CreateAncientStorage::Append);
+            .unwrap_or(CreateAncientStorage::Pack);
 
         let filler_account_suffix = if filler_accounts_config.count > 0 {
             Some(solana_sdk::pubkey::new_rand())
@@ -3952,6 +3962,7 @@ impl AccountsDb {
             );
         }
 
+        error!("ancient_append_vecs_packed: {}, dead storages: {}", line!(), dead_storages.len());
         self.drop_or_recycle_stores(dead_storages, stats);
         time.stop();
 
@@ -4307,6 +4318,7 @@ impl AccountsDb {
         let can_randomly_shrink = true;
         let sorted_slots = self.get_sorted_potential_ancient_slots(oldest_non_ancient_slot);
         if self.create_ancient_storage == CreateAncientStorage::Append {
+            log::error!("ancient_append_vecs_packed: {}", line!());
             self.combine_ancient_slots(sorted_slots, can_randomly_shrink);
         } else {
             self.combine_ancient_slots_packed(sorted_slots, can_randomly_shrink);
@@ -7635,8 +7647,8 @@ impl AccountsDb {
 
         let slot = storages.max_slot_inclusive();
         let use_bg_thread_pool = config.use_bg_thread_pool;
-        let scan_and_hash = || {
-            let cache_hash_data = Self::get_cache_hash_data(accounts_hash_cache_path, config, slot);
+        let mut scan_and_hash = || {
+            let cache_hash_data = Self::get_cache_hash_data(accounts_hash_cache_path.clone(), config, slot);
 
             let bounds = Range {
                 start: 0,
@@ -7650,6 +7662,7 @@ impl AccountsDb {
                     None
                 },
                 zero_lamport_accounts: flavor.zero_lamport_accounts(),
+                temp_file_path: accounts_hash_cache_path.clone(),
             };
             error!("jwash: scan_snapshot_stores_with_cache");
 
