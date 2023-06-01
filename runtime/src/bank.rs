@@ -1719,6 +1719,8 @@ impl Bank {
             "update_epoch_stakes",
         );
 
+        self.check_stake_account();
+
         let mut rewards_metrics = RewardsMetrics::default();
         // After saving a snapshot of stakes, apply stake rewards and commission
         let (_, update_rewards_with_thread_pool_time) = measure!(
@@ -2846,6 +2848,48 @@ impl Bank {
             let vote_rewards = self.store_vote_accounts(vote_account_rewards, metrics);
             self.update_reward_history(stake_rewards, vote_rewards);
         }
+    }
+
+    fn check_stake_account(&self) {
+        info!("Start StakeAccount Checking ...");
+        let stakes = self.stakes_cache.stakes();
+        let stake_delegations: Vec<_> = stakes.stake_delegations().iter().collect();
+        let mut total = 0;
+        let mut passed = 0;
+        let mut failed = 0;
+
+        stake_delegations
+            .into_iter()
+            .for_each(|(stake_pubkey, _cached_stake_account)| {
+                //let delegation = cached_stake_account.delegation();
+                let stake_account = match self.get_account_with_fixed_root(stake_pubkey) {
+                    Some(stake_account) => stake_account,
+                    _ => {
+                        return;
+                    }
+                };
+
+                let stake_account = match StakeAccount::<()>::try_from(stake_account) {
+                    Ok(stake_account) => stake_account,
+                    _ => {
+                        return;
+                    }
+                };
+
+                let account = stake_account.account();
+
+                if account.data()[196] == 0 {
+                    passed += 1;
+                } else {
+                    failed += 1;
+                }
+                total += 1;
+            });
+
+        info!(
+            "StakeAccount Check Result: total={} passed={} failed={}",
+            total, passed, failed
+        );
     }
 
     fn load_vote_and_stake_accounts(
