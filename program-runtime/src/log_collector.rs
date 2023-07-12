@@ -23,6 +23,7 @@ impl Default for LogCollector {
 
 impl LogCollector {
     pub fn log(&mut self, message: &str) {
+        println!("{}", message);
         let Some(limit) = self.bytes_limit else {
             self.messages.push(message.to_string());
             return;
