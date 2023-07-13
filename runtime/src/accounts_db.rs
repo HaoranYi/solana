@@ -113,6 +113,21 @@ use {
     tempfile::TempDir,
 };
 
+trait Mergeable {
+    fn len(&self) -> usize;
+    fn extend2(&mut self, other: Self);
+}
+
+impl<T> Mergeable for Vec<T> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn extend2(&mut self, other: Self) {
+        Extend::extend(self, other);
+    }
+}
+
 const PAGE_SIZE: u64 = 4 * 1024;
 pub(crate) const MAX_RECYCLE_STORES: usize = 1000;
 // when the accounts write cache exceeds this many bytes, we will flush it
@@ -3192,6 +3207,15 @@ impl AccountsDb {
         let missing_accum = AtomicU64::new(0);
         let useful_accum = AtomicU64::new(0);
 
+        fn merge<T: Mergeable>(mut acc: T, other: T) -> T {
+            if acc.len() < other.len() {
+                merge(other, acc)
+            } else {
+                acc.extend2(other);
+                acc
+            }
+        }
+
         // parallel scan the index.
         let (mut purges_zero_lamports, purges_old_accounts) = {
             let do_clean_scan = || {
@@ -3282,11 +3306,17 @@ impl AccountsDb {
                     })
                     .reduce(
                         || (HashMap::new(), Vec::new()),
-                        |mut m1, m2| {
+                        |mut m1, mut m2| {
                             // Collapse down the hashmaps/vecs into one.
-                            m1.0.extend(m2.0);
-                            m1.1.extend(m2.1);
-                            m1
+                            if m1.0.len() > m2.0.len() {
+                                m1.0.extend(m2.0);
+                                m1.1.extend(m2.1);
+                                m1
+                            } else {
+                                m2.0.extend(m1.0);
+                                m2.1.extend(m1.1);
+                                m2
+                            }
                         },
                     )
             };
