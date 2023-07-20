@@ -20,10 +20,14 @@ spl() {
     )
     set -x
     rm -rf spl
-    git clone https://github.com/solana-labs/solana-program-library.git spl
+    #git clone https://github.com/solana-labs/solana-program-library.git spl
+    #git clone https://github.com/HaoranYi/solana-program-library.git spl
+    mkdir spl
+    cp -r ~/src/solana-program-library/* spl/
     # copy toolchain file to use solana's rust version
     cp "$SOLANA_DIR"/rust-toolchain.toml spl/
     cd spl || exit 1
+    # git checkout redelegation_fix 
 
     project_used_solana_version=$(sed -nE 's/solana-sdk = \"[>=<~]*(.*)\"/\1/p' <"token/program/Cargo.toml")
     echo "used solana version: $project_used_solana_version"
