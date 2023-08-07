@@ -3161,4 +3161,41 @@ pub mod tests {
             assert!(expected_ref_counts.is_empty());
         }
     }
+
+    // $ cargo test --release --package solana-runtime --lib -- ancient_append_vecs::tests::bench_uniq_accounts  --nocapture --test-threads 1
+    // running 2 tests
+    // 1k
+    // test ancient_append_vecs::tests::bench_uniq_accounts ... New Elapsed: 173.13µs
+    // test ancient_append_vecs::tests::bench_uniq_accounts_orig ... Old Elapsed: 276.47µs
+    #[test]
+    fn bench_uniq_accounts() {
+        let (db, storages, slots, _infos) = get_sample_storages(1, None);
+
+        use std::time::Instant;
+        let now = Instant::now();
+
+        let original_results = storages
+            .iter()
+            .map(|store| db.get_unique_accounts_from_storage(store))
+            .collect::<Vec<_>>();
+
+        let elapsed = now.elapsed();
+        println!("New Elapsed: {:.2?}", elapsed);
+    }
+
+    #[test]
+    fn bench_uniq_accounts_orig() {
+        let (db, storages, slots, _infos) = get_sample_storages(1, None);
+
+        use std::time::Instant;
+        let now = Instant::now();
+
+        let original_results = storages
+            .iter()
+            .map(|store| db.get_unique_accounts_from_storage_orig(store))
+            .collect::<Vec<_>>();
+
+        let elapsed = now.elapsed();
+        println!("Old Elapsed: {:.2?}", elapsed);
+    }
 }
