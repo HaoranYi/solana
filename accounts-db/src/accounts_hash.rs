@@ -844,7 +844,7 @@ impl<'a> AccountsHasher<'a> {
         sorted_data_by_pubkey: &[&'b [CalculateHashIntermediate]],
         binner: &PubkeyBinCalculator24,
         slot_pk_cursor: &(usize, usize, Pubkey),
-        first_item_map: &mut std::collections::BTreeMap<usize, (usize, Pubkey)>,
+        first_item_map: &mut std::collections::LinkedList<(usize, usize, Pubkey)>,
     ) -> &'b CalculateHashIntermediate {
         let key = slot_pk_cursor.2;
         let division_index = slot_pk_cursor.0;
@@ -1040,7 +1040,8 @@ impl<'a> AccountsHasher<'a> {
         };
 
         // slot_group_index --> (offset, pubkey)
-        let mut first_item_map = std::collections::BTreeMap::new();
+        //let mut first_item_map = std::collections::BTreeMap::new();
+        let mut first_item_map = std::collections::LinkedList::new();
 
         // initialize 'first_items', which holds the current lowest item in each slot group
         sorted_data_by_pubkey
@@ -1051,7 +1052,7 @@ impl<'a> AccountsHasher<'a> {
                     Self::find_first_pubkey_in_bin(hash_data, pubkey_bin, bins, &binner, stats);
                 if let Some(first_pubkey_in_bin) = first_pubkey_in_bin {
                     let k = hash_data[first_pubkey_in_bin].pubkey;
-                    first_item_map.insert(i, (first_pubkey_in_bin, k));
+                    first_item_map.push_back((i, first_pubkey_in_bin, k));
                 }
             });
         let mut overall_sum = 0;
@@ -1061,7 +1062,7 @@ impl<'a> AccountsHasher<'a> {
         // this loop runs once per unique pubkey contained in any slot group
         while !first_item_map.is_empty() {
             let mut min_slot_pk_cursor = None;
-            for (slot_group_index, (offset, pk)) in first_item_map.iter() {
+            for (slot_group_index, offset, pk) in first_item_map.iter() {
                 if min_slot_pk_cursor.is_none() {
                     min_slot_pk_cursor = Some((*slot_group_index, *offset, *pk));
                     continue;
