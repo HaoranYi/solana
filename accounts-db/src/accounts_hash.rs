@@ -2187,4 +2187,41 @@ pub mod tests {
             2, // accounts above are in 2 groups
         );
     }
+
+    #[test]
+    fn test_partition_slice_parallel() {
+        let array = [1, 2, 3, 4, 5, 6];
+
+        let p1 = unsafe {
+            let ptr = array[0..2].as_ptr() as *mut i32;
+            std::slice::from_raw_parts_mut(ptr, 2)
+        };
+
+        let p2 = unsafe {
+            let ptr = array[2..4].as_ptr() as *mut i32;
+            std::slice::from_raw_parts_mut(ptr, 2)
+        };
+
+        let p3 = unsafe {
+            let ptr = array[4..6].as_ptr() as *mut i32;
+            std::slice::from_raw_parts_mut(ptr, 2)
+        };
+
+        let mut v = vec![p1, p2, p3];
+
+        v.par_iter_mut().for_each(|x| {
+            (*x).reverse();
+        });
+
+        assert_eq!(array, [2, 1, 4, 3, 6, 5]);
+    }
+
+    #[test]
+    fn t() {
+        let mut array = [1, 2, 3, 0, 2, 4, 8, 0, 3, 6, 9];
+        array
+            .par_split_mut(|i| *i == 0)
+            .for_each(|slice| slice.reverse());
+        assert_eq!(array, [3, 2, 1, 0, 8, 4, 2, 0, 9, 6, 3]);
+    }
 }
