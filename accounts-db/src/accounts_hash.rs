@@ -1,3 +1,7 @@
+use std::ops::Deref;
+
+use solana_vote_program::vote_state::to;
+
 use {
     crate::{
         accounts_db::{AccountStorageEntry, IncludeSlotInHash, PUBKEY_BINS_FOR_CALCULATING_HASHES},
@@ -37,59 +41,119 @@ struct Node {
     next: RefCell<Option<Box<Node>>>,
 }
 
+// Insert `to_insert` to the list recursively.
+// The list maintains the sorted ordering of pubkeys.
+// Arguments:
+//   - head : the head of the list to insert into
+//   - to_insert_key: the pubkey for the `to_insert` node used for key comparison
+//   - sorted_data_by_pubkey: slot-group cached hash data for pubkey look up
+//   - to_insert : the node to be inserted into the list
+//
+// Return: (new_head, to_retry)
+//   - new_head: if not none, it represents that `to_insert` was inserted at the beginning of the list, list now starts at `new_head`
+//      if none, it represents that `to_insert` was insert after the head. list still starts at `head`.
+//   - to_retry: if not none, it represents the node that are replaced in the list (which need to be retried to find next insertion)
+//      if none, it represents that no new node is replaced (insertion complete).
 fn insert(
-    current: &mut Option<Box<Node>>,
+    head: &mut Option<Box<Node>>,
     to_insert_key: &Pubkey,
     sorted_data_by_pubkey: &[&[CalculateHashIntermediate]],
     mut to_insert: Box<Node>,
 ) -> (Option<Box<Node>>, Option<Box<Node>>) {
-    if current.is_some() {
-        let c2 = current.as_ref().unwrap();
-        let c2_entry = &sorted_data_by_pubkey[c2.slot_group_index][c2.offset];
-        match to_insert_key.cmp(&c2_entry.pubkey) {
+    /// The following unsafe code allows us to find the first node that's greater than `to_insert`.
+    /// This can be used to get rid of the recursion.
+    ///
+    // let mut p = None;
+    // let mut p2 = None;
+    // loop {
+    //     p = head.as_deref_mut();
+    //     if p.is_none() {
+    //         break;
+    //     }
+
+    //     if let Some(ref x) = p {
+    //         //let x = p.unwrap().as_ref();
+    //         let e = &sorted_data_by_pubkey[x.slot_group_index][x.offset];
+
+    //         if to_insert_key > &e.pubkey {
+    //             p2 = x.next.borrow_mut().as_deref_mut();
+    //         }
+
+    //         p = p2;
+
+    //         //*p.unwrap().next.borrow_mut() = Some(to_insert);
+    //     }
+    // }
+
+    // let mut p = head.as_deref();
+    // loop {
+    //     if p.is_none() {
+    //         break;
+    //     }
+    //     let n = p.as_ref().unwrap();
+    //     let e = &sorted_data_by_pubkey[n.slot_group_index][n.offset];
+
+    //     let mut pn = None;
+    //     if to_insert_key > &e.pubkey {
+    //         //let next = p.as_ref().unwrap().next.borrow().as_deref();
+    //         pn = if let Some(next) = n.next.borrow().as_deref() {
+    //             {
+    //                 unsafe {
+    //                     let ptr: *const Node = &*next;
+    //                     Some(&*ptr)
+    //                 }
+    //             }
+    //         } else {
+    //             None
+    //         };
+    //     } else {
+    //         break;
+    //     }
+    //     p = pn;
+    // }
+    if head.is_some() {
+        let h_node = head.as_ref().unwrap();
+        let h_entry = &sorted_data_by_pubkey[h_node.slot_group_index][h_node.offset];
+        match to_insert_key.cmp(&h_entry.pubkey) {
             std::cmp::Ordering::Greater => {
-                // current goes after this node somewhere
-                let (to_insert, to_retry) = insert(
-                    &mut c2.next.borrow_mut(),
+                // This is a larger key than head, recurse to head->next.
+                let (new_head, to_retry) = insert(
+                    &mut h_node.next.borrow_mut(),
                     to_insert_key,
                     sorted_data_by_pubkey,
                     to_insert,
                 );
-                if let Some(to_insert) = to_insert {
-                    // did not find someone to insert it after, so it goes after us
-                    let mut next = c2.next.borrow_mut();
-                    *to_insert.next.borrow_mut() = std::mem::take(&mut next);
-                    *next = Some(to_insert);
+                if let Some(new_head) = new_head {
+                    // Head changed after insertion. Update head->next to the `new_head`.
+                    assert!(to_retry.is_none());
+                    let mut next = h_node.next.borrow_mut();
+                    *next = Some(new_head);
                     drop(next);
-
-                    // nothing for caller to do, no new node with duplicates to re-sort
                     (None, None)
                 } else {
-                    // already inserted, so return through
+                    // Head didn't change. So return through
                     (None, to_retry)
                 }
             }
             std::cmp::Ordering::Less => {
                 // goes in front of us
-                let next: Option<Box<Node>> = std::mem::take(current);
-                *to_insert.next.borrow_mut() = next;
-                *current = Some(to_insert);
+                *to_insert.next.borrow_mut() = std::mem::take(head);
 
-                // the one to insert goes before us, so insert before us, telling calling fn to update
-                (None, None)
+                // the one to insert goes before us, so insert before us, return new_head.
+                (Some(to_insert), None)
             }
             std::cmp::Ordering::Equal => {
                 // we are = the current one
-                if to_insert.slot_group_index < c2.slot_group_index {
+                if to_insert.slot_group_index < h_node.slot_group_index {
                     // if to_insert's index < this node's then don't change the list but return `to_insert` to keep advancing it
                     (None, Some(to_insert))
                 } else {
                     // if to_insert's index > this node's then replace this element with `to_insert` and return current
-                    let prev_next = std::mem::take(&mut current.as_mut().unwrap().next);
+                    let prev_next = std::mem::take(&mut head.as_mut().unwrap().next);
                     to_insert.next = prev_next;
-                    let to_retry = std::mem::take(current);
-                    *current = Some(to_insert);
-                    (None, to_retry)
+                    let to_retry = std::mem::take(head);
+                    // return `to_insert` as new_head, and old head for to_try
+                    (Some(to_insert), to_retry)
                 }
             }
         }
@@ -1263,12 +1327,10 @@ impl<'a> AccountsHasher<'a> {
                 }
 
                 // current needs to be inserted in a non-head position in the linked list
-                let (to_insert, new_current) =
+                let (new_head, new_current) =
                     insert(&mut head, &key, sorted_data_by_pubkey, current);
-                if let Some(mut to_insert) = to_insert {
-                    let current = std::mem::take(&mut head).unwrap();
-                    to_insert.next = RefCell::new(Some(current));
-                    head = Some(to_insert);
+                if let Some(new_head) = new_head {
+                    head = Some(new_head);
                 }
                 if let Some(new_current) = new_current {
                     // there is an item that was replaced in the list. So, we need to find next on it.
@@ -1287,43 +1349,6 @@ impl<'a> AccountsHasher<'a> {
                     // list is up to date, all chunks are represented in it. so pick the lowest pubkey and start again
                     break;
                 }
-                /*                while last.borrow().is_some() {
-                    last = &last.borrow().as_ref().unwrap().next;
-                }
-
-                if let Some(v) = working_set.get_mut(&key) {
-                    // There is already a later slot group that contains this key in the working_set,
-                    // look up again.
-                    if v.0 > slot_group_index {
-                        let (_item, new_next) = Self::get_item2(
-                            sorted_data_by_pubkey,
-                            pubkey_bin,
-                            &binner,
-                            slot_group_index,
-                            offset,
-                            &key,
-                        );
-                        next = new_next;
-                    } else {
-                        // A previous slot contains this key, replace it, and look for next item in the previous slot group.
-                        let (_item, new_next) = Self::get_item2(
-                            sorted_data_by_pubkey,
-                            pubkey_bin,
-                            &binner,
-                            v.0,
-                            v.1,
-                            &key,
-                        );
-                        v.0 = slot_group_index;
-                        v.1 = offset;
-                        next = new_next;
-                    }
-                } else {
-                    // This is a new key, insert it into working set.
-                    working_set.insert(key, (slot_group_index, offset));
-                    break;
-                }
-                */
             }
         }
 
