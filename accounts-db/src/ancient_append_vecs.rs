@@ -198,9 +198,9 @@ impl AncientSlotInfos {
             }
         }
         log::error!("ancient_append_vecs_packed: {}, {}, bytes: {}", line!(), self.all_infos.len(), cumulative_bytes);
-        if self.all_infos.len() > max_slots {
-            self.all_infos.truncate(max_slots);
-        }
+        // if self.all_infos.len() > max_slots {
+        //     self.all_infos.truncate(max_slots);
+        // }
    }
 
     /// remove entries from 'all_infos' such that combining
@@ -973,7 +973,9 @@ pub fn get_ancient_append_vec_capacity() -> u64 {
     // some functions add slop on allocation
     // The bigger an append vec is, the more unwieldy it becomes to shrink, create, write.
     // 1/10 of max is a reasonable size in practice.
-    MAXIMUM_APPEND_VEC_FILE_SIZE / 10 - 2048
+    // MAXIMUM_APPEND_VEC_FILE_SIZE / 10 - 2048
+
+    128 * 1024 * 1024 // 128M
 }
 
 /// is this a max-size append vec designed to be used as an ancient append vec?
