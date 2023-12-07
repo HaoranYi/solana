@@ -59,6 +59,47 @@ fn test_accounts_create(bencher: &mut Bencher) {
 }
 
 #[bench]
+fn test_accounts_store(bencher: &mut Bencher) {
+    let (genesis_config, _) = create_genesis_config(10_000);
+    let bank0 = Bank::new_with_paths_for_benches(&genesis_config, vec![PathBuf::from("bench_a0")]);
+
+    let mut to_store = vec![];
+    for t in 0..100 {
+        let pubkey = solana_sdk::pubkey::new_rand();
+        let account =
+            AccountSharedData::new((t + 1) as u64, 0, AccountSharedData::default().owner());
+        to_store.push((pubkey, account));
+    }
+
+    let r1 = bencher
+        .bench(|bencher| {
+            bencher.iter(|| {
+                for (pubkey, account) in to_store.iter() {
+                    bank0.store_account(pubkey, account);
+                }
+            });
+            Ok(())
+        })
+        .unwrap()
+        .unwrap();
+
+    let r2 = bencher
+        .bench(|bencher| {
+            bencher.iter(|| {
+                for (pubkey, account) in to_store.iter() {
+                    bank0.store_account0(pubkey, account);
+                }
+            });
+            Ok(())
+        })
+        .unwrap()
+        .unwrap();
+
+    println!("{r1:?}");
+    println!("{r2:?}");
+}
+
+#[bench]
 fn test_accounts_squash(bencher: &mut Bencher) {
     let (mut genesis_config, _) = create_genesis_config(100_000);
     genesis_config.rent.burn_percent = 100; // Avoid triggering an assert in Bank::distribute_rent_to_validators()

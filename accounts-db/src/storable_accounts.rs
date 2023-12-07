@@ -87,6 +87,25 @@ impl<'a, T: ReadableAccount + Sync> StorableAccounts<'a, T> for StorableAccounts
     }
 }
 
+/// Specialization of StorableAccounts to store a single account
+impl<'a, T: ReadableAccount + Sync> StorableAccounts<'a, T> for (Slot, (&'a Pubkey, &'a T)) {
+    fn pubkey(&self, _index: usize) -> &Pubkey {
+        self.1 .0
+    }
+    fn account(&self, _index: usize) -> &T {
+        self.1 .1
+    }
+    fn slot(&self, _index: usize) -> Slot {
+        self.target_slot()
+    }
+    fn target_slot(&self) -> Slot {
+        self.0
+    }
+    fn len(&self) -> usize {
+        1
+    }
+}
+
 impl<'a, T: ReadableAccount + Sync> StorableAccounts<'a, T> for (Slot, &'a [(&'a Pubkey, &'a T)]) {
     fn pubkey(&self, index: usize) -> &Pubkey {
         self.1[index].0

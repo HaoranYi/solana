@@ -6494,6 +6494,16 @@ impl Bank {
         pubkey: &Pubkey,
         account: &T,
     ) {
+        self.store_accounts((self.slot(), (pubkey, account)))
+    }
+
+    /// fn store the single `account` with `pubkey`.
+    /// Uses `store_accounts`, which works on a vector of accounts.
+    pub fn store_account0<T: ReadableAccount + Sync + ZeroLamport>(
+        &self,
+        pubkey: &Pubkey,
+        account: &T,
+    ) {
         self.store_accounts((self.slot(), &[(pubkey, account)][..]))
     }
 
