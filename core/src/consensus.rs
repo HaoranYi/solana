@@ -1029,7 +1029,7 @@ impl Tower {
         );
         let new_check = Some((switch_slot, decision.clone()));
         if new_check != self.last_switch_threshold_check {
-            trace!(
+            info!(
                 "new switch threshold check: slot {}: {:?}",
                 switch_slot,
                 decision,
@@ -1063,7 +1063,7 @@ impl Tower {
         };
 
         let lockout = *fork_stake as f64 / total_stake as f64;
-        trace!(
+        info!(
             "fork_stake slot: {}, threshold_vote slot: {}, lockout: {} fork_stake: {} total_stake: {}",
             slot,
             threshold_vote.slot(),
