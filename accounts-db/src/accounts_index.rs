@@ -345,6 +345,43 @@ pub enum AccountIndexGetResult<T: IndexValue> {
     NotFound,
 }
 
+#[allow(dead_code)]
+#[self_referencing]
+pub struct ReadAccountMapEntryRef<'a, T: IndexValue> {
+    owned_entry: &'a AccountMapEntry<T>,
+    #[borrows(owned_entry)]
+    #[covariant]
+    slot_list_guard: RwLockReadGuard<'this, SlotList<T>>,
+}
+
+impl<'a, T: IndexValue> Debug for ReadAccountMapEntryRef<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self.borrow_owned_entry())
+    }
+}
+
+impl<'a, T: IndexValue> ReadAccountMapEntryRef<'a, T> {
+    pub fn from_account_map_entry(account_map_entry: &'a AccountMapEntry<T>) -> Self {
+        ReadAccountMapEntryRefBuilder {
+            owned_entry: account_map_entry,
+            slot_list_guard_builder: |lock| lock.slot_list.read().unwrap(),
+        }
+        .build()
+    }
+
+    pub fn slot_list(&self) -> &SlotList<T> {
+        self.borrow_slot_list_guard()
+    }
+
+    pub fn ref_count(&self) -> RefCount {
+        self.borrow_owned_entry().ref_count()
+    }
+
+    pub fn addref(&self) {
+        self.borrow_owned_entry().addref();
+    }
+}
+
 #[self_referencing]
 pub struct ReadAccountMapEntry<T: IndexValue> {
     owned_entry: AccountMapEntry<T>,
@@ -1136,6 +1173,29 @@ impl<T: IndexValue, U: DiskIndexValue + From<T> + Into<T>> AccountsIndex<T, U> {
     ) -> Option<ReadAccountMapEntry<T>> {
         lock.get(pubkey)
             .map(ReadAccountMapEntry::from_account_map_entry)
+    }
+
+    pub fn get_account_read_entry_ref<'a, 'b>(
+        &'a self,
+        pubkey: &Pubkey,
+    ) -> Option<ReadAccountMapEntryRef<'b, T>>
+    where
+        'a: 'b,
+    {
+        let lock = self.get_bin(pubkey);
+        self.get_account_read_entry_ref_with_lock(pubkey, lock)
+    }
+
+    pub fn get_account_read_entry_ref_with_lock<'a, 'b>(
+        &'a self,
+        pubkey: &Pubkey,
+        lock: AccountMaps<'b, T, U>,
+    ) -> Option<ReadAccountMapEntryRef<'b, T>>
+    where
+        'a: 'b,
+    {
+        lock.get_ref(pubkey)
+            .map(ReadAccountMapEntryRef::from_account_map_entry)
     }
 
     fn slot_list_mut<RT>(
@@ -4241,5 +4301,19 @@ pub mod tests {
 
         let config = config.recreate_with_abort();
         assert!(config.is_aborted());
+    }
+
+    #[test]
+    fn test_read_account_map_entry2() {
+        let entry = Arc::new(AccountMapEntryInner::<bool>::new(
+            vec![],
+            5,
+            AccountMapEntryMeta::default(),
+        ));
+        let read_entry = ReadAccountMapEntryRef::from_account_map_entry(&entry);
+        assert_eq!(read_entry.slot_list().len(), 0);
+        assert_eq!(read_entry.ref_count(), 5);
+        read_entry.addref();
+        assert_eq!(read_entry.ref_count(), 6);
     }
 }

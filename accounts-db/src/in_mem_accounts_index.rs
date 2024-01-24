@@ -319,8 +319,54 @@ impl<T: IndexValue, U: DiskIndexValue + From<T> + Into<T>> InMemAccountsIndex<T,
     }
 
     /// lookup 'pubkey' in index (in mem or on disk)
+    /// Note that this function clone the Arc, which can leads to a memory allocation.
+    /// If you want to avoid the Arc clone, please use `get_ref()` instead.
     pub fn get(&self, pubkey: &K) -> Option<AccountMapEntry<T>> {
         self.get_internal(pubkey, |entry| (true, entry.map(Arc::clone)))
+    }
+
+    /// lookup 'pubkey' in index (in mem or on disk)
+    pub fn get_ref<'a, 'b>(&'a self, pubkey: &K) -> Option<&'b AccountMapEntry<T>>
+    where
+        'a: 'b,
+    {
+        self.get_internal(pubkey, |entry| (true, entry))
+
+        // doesn't compile -- can't return value referencing local variable `map`
+        //let map = self.map_internal.read().unwrap();
+        //let result = map.get(pubkey);
+        //result
+
+        // self.get_only_in_mem(pubkey, true, |entry| {
+        //     if let Some(entry) = entry {
+        //         callback(Some(entry)).1
+        //     } else {
+        //         // not in cache, look on disk
+        //         let stats = self.stats();
+        //         let disk_entry = self.load_account_entry_from_disk(pubkey);
+        //         if disk_entry.is_none() {
+        //             return callback(None).1;
+        //         }
+        //         let disk_entry = disk_entry.unwrap();
+        //         let mut map = self.map_internal.write().unwrap();
+        //         let entry = map.entry(*pubkey);
+        //         match entry {
+        //             Entry::Occupied(occupied) => callback(Some(occupied.get())).1,
+        //             Entry::Vacant(vacant) => {
+        //                 debug_assert!(!disk_entry.dirty());
+        //                 let (add_to_cache, rt) = callback(Some(&disk_entry));
+        //                 // We are holding a write lock to the in-memory map.
+        //                 // This pubkey is not in the in-memory map.
+        //                 // If the entry is now dirty, then it must be put in the cache or the modifications will be lost.
+        //                 if add_to_cache || disk_entry.dirty() {
+        //                     stats.inc_mem_count(self.bin);
+        //                     vacant.insert(disk_entry);
+        //                 }
+        //                 rt
+        //             }
+        //         }
+        //     }
+        // })
     }
 
     /// set age of 'entry' to the future
