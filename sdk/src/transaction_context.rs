@@ -792,7 +792,11 @@ impl<'a> BorrowedAccount<'a> {
             return Err(InstructionError::ReadonlyLamportChange);
         }
         // The balance of executable accounts may not change
+        // TODO
+
+        println!("set_lamports: {:?}", self.account);
         if self.is_executable(feature_set) {
+            println!("error!");
             return Err(InstructionError::ExecutableLamportChange);
         }
         // don't touch the account if the lamports do not change
@@ -1041,7 +1045,8 @@ impl<'a> BorrowedAccount<'a> {
     /// Returns whether this account is executable (transaction wide)
     #[inline]
     pub fn is_executable(&self, feature_set: &FeatureSet) -> bool {
-        is_builtin(&*self.account) || is_executable(&*self.account, feature_set)
+        //is_builtin(&*self.account) || is_executable(&*self.account, feature_set)
+        is_builtin(&*self.account) || self.account.executable()
     }
 
     /// Configures whether this account is executable (transaction wide)

@@ -231,14 +231,18 @@ fn transfer(
         return Err(InstructionError::MissingRequiredSignature);
     }
 
-    transfer_verified(
+    let r = transfer_verified(
         from_account_index,
         to_account_index,
         lamports,
         invoke_context,
         transaction_context,
         instruction_context,
-    )
+    );
+
+    println!("{:?}", r);
+
+    r
 }
 
 fn transfer_with_seed(
