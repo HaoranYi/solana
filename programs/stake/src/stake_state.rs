@@ -197,6 +197,7 @@ fn redeem_stake_rewards(
     stake_history: &StakeHistory,
     inflation_point_calc_tracer: Option<impl Fn(&InflationPointCalculationEvent)>,
     new_rate_activation_epoch: Option<Epoch>,
+    epoch: Option<Epoch>,
 ) -> Option<(u64, u64)> {
     if let Some(inflation_point_calc_tracer) = inflation_point_calc_tracer.as_ref() {
         inflation_point_calc_tracer(&InflationPointCalculationEvent::CreditsObserved(
@@ -212,6 +213,7 @@ fn redeem_stake_rewards(
         stake_history,
         inflation_point_calc_tracer.as_ref(),
         new_rate_activation_epoch,
+        epoch,
     )
     .map(|calculated_stake_rewards| {
         if let Some(inflation_point_calc_tracer) = inflation_point_calc_tracer {
@@ -235,6 +237,7 @@ fn calculate_stake_points(
     stake_history: &StakeHistory,
     inflation_point_calc_tracer: Option<impl Fn(&InflationPointCalculationEvent)>,
     new_rate_activation_epoch: Option<Epoch>,
+    epoch: Option<Epoch>,
 ) -> u128 {
     calculate_stake_points_and_credits(
         stake,
@@ -242,6 +245,7 @@ fn calculate_stake_points(
         stake_history,
         inflation_point_calc_tracer,
         new_rate_activation_epoch,
+        epoch,
     )
     .points
 }
@@ -253,18 +257,37 @@ struct CalculatedStakePoints {
     force_credits_update_with_skipped_reward: bool,
 }
 
-/// for a given stake and vote_state, calculate how many
-///   points were earned (credits * stake) and new value
-///   for credits_observed were the points paid
+/// for a given stake and vote_state, calculate how many points were earned
+///   (credits * stake) and new value for credits_observed were the points paid
+///
+/// If argument `epoch` is None, the implicit assumption is that `bank`, in
+/// which the rewards are being calculated, is at the first block of the epoch
+/// boundary. Otherwise, if the assumption is not valid, for example, when
+/// recomputing epoch rewards in the middle of an epoch (such as loading from
+/// snapshot), then we need to pass the Some(epoch) as the argument.
 fn calculate_stake_points_and_credits(
     stake: &Stake,
     new_vote_state: &VoteState,
     stake_history: &StakeHistory,
     inflation_point_calc_tracer: Option<impl Fn(&InflationPointCalculationEvent)>,
     new_rate_activation_epoch: Option<Epoch>,
+    epoch: Option<Epoch>,
 ) -> CalculatedStakePoints {
+    // [Recompute stake reward] Try to recompute stake rewards after epoch
+    // boundary will be problematic. Some stake accounts have already received
+    // the rewards and stake.credits_observed and stake.delegation balance have
+    // already changed. Recompute from the stake_cache is not possible!
+
     let credits_in_stake = stake.credits_observed;
-    let credits_in_vote = new_vote_state.credits();
+
+    // [Recompute stake reward] credit_in_vote is going to update observed_credit in the stake account after rewards.
+    // It will be the highest vote_credit that the rewards has been calculated on. With over writing last epoch_credit
+    // entry for no credit earned epoch, and return the last LEQ epoch, this should be fine.
+    let credits_in_vote = if let Some(epoch) = epoch {
+        new_vote_state.credits_before_epoch(epoch)
+    } else {
+        new_vote_state.credits()
+    };
     // if there is no newer credits since observed, return no point
     match credits_in_vote.cmp(&credits_in_stake) {
         Ordering::Less => {
@@ -312,21 +335,25 @@ fn calculate_stake_points_and_credits(
     let mut points = 0;
     let mut new_credits_observed = credits_in_stake;
 
-    for (epoch, final_epoch_credits, initial_epoch_credits) in
-        new_vote_state.epoch_credits().iter().copied()
-    {
+    let epoch_credits = if let Some(epoch) = epoch {
+        new_vote_state.epoch_credits_before(epoch)
+    } else {
+        new_vote_state.epoch_credits()
+    };
+
+    for (epoch, final_epoch_credits, initial_epoch_credits) in epoch_credits {
         let stake_amount = u128::from(stake.delegation.stake(
-            epoch,
+            *epoch,
             stake_history,
             new_rate_activation_epoch,
         ));
 
         // figure out how much this stake has seen that
         //   for which the vote account has a record
-        let earned_credits = if credits_in_stake < initial_epoch_credits {
+        let earned_credits = if credits_in_stake < *initial_epoch_credits {
             // the staker observed the entire epoch
             final_epoch_credits - initial_epoch_credits
-        } else if credits_in_stake < final_epoch_credits {
+        } else if credits_in_stake < *final_epoch_credits {
             // the staker registered sometime during the epoch, partial credit
             final_epoch_credits - new_credits_observed
         } else {
@@ -337,7 +364,7 @@ fn calculate_stake_points_and_credits(
         let earned_credits = u128::from(earned_credits);
 
         // don't want to assume anything about order of the iterator...
-        new_credits_observed = new_credits_observed.max(final_epoch_credits);
+        new_credits_observed = new_credits_observed.max(*final_epoch_credits);
 
         // finally calculate points for this epoch
         let earned_points = stake_amount * earned_credits;
@@ -345,7 +372,7 @@ fn calculate_stake_points_and_credits(
 
         if let Some(inflation_point_calc_tracer) = inflation_point_calc_tracer.as_ref() {
             inflation_point_calc_tracer(&InflationPointCalculationEvent::CalculatedPoints(
-                epoch,
+                *epoch,
                 stake_amount,
                 earned_credits,
                 earned_points,
@@ -381,6 +408,7 @@ fn calculate_stake_rewards(
     stake_history: &StakeHistory,
     inflation_point_calc_tracer: Option<impl Fn(&InflationPointCalculationEvent)>,
     new_rate_activation_epoch: Option<Epoch>,
+    epoch: Option<Epoch>,
 ) -> Option<CalculatedStakeRewards> {
     // ensure to run to trigger (optional) inflation_point_calc_tracer
     let CalculatedStakePoints {
@@ -393,6 +421,7 @@ fn calculate_stake_rewards(
         stake_history,
         inflation_point_calc_tracer.as_ref(),
         new_rate_activation_epoch,
+        epoch,
     );
 
     // Drive credits_observed forward unconditionally when rewards are disabled
@@ -1589,6 +1618,7 @@ pub fn redeem_rewards(
     stake_history: &StakeHistory,
     inflation_point_calc_tracer: Option<impl Fn(&InflationPointCalculationEvent)>,
     new_rate_activation_epoch: Option<Epoch>,
+    epoch: Option<Epoch>,
 ) -> Result<(u64, u64), InstructionError> {
     if let StakeStateV2::Stake(meta, mut stake, stake_flags) = stake_state {
         if let Some(inflation_point_calc_tracer) = inflation_point_calc_tracer.as_ref() {
@@ -1615,6 +1645,7 @@ pub fn redeem_rewards(
             stake_history,
             inflation_point_calc_tracer,
             new_rate_activation_epoch,
+            epoch,
         ) {
             stake_account.checked_add_lamports(stakers_reward)?;
             stake_account.set_state(&StakeStateV2::Stake(meta, stake, stake_flags))?;
@@ -1635,6 +1666,7 @@ pub fn calculate_points(
     vote_state: &VoteState,
     stake_history: &StakeHistory,
     new_rate_activation_epoch: Option<Epoch>,
+    epoch: Option<Epoch>,
 ) -> Result<u128, InstructionError> {
     if let StakeStateV2::Stake(_meta, stake, _stake_flags) = stake_state {
         Ok(calculate_stake_points(
@@ -1643,6 +1675,7 @@ pub fn calculate_points(
             stake_history,
             null_tracer(),
             new_rate_activation_epoch,
+            epoch,
         ))
     } else {
         Err(InstructionError::InvalidAccountData)
@@ -2553,6 +2586,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2573,6 +2607,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None,
             )
         );
@@ -2611,6 +2646,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2629,6 +2665,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None
             )
         );
@@ -2655,6 +2692,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2680,6 +2718,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2701,6 +2740,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None,
             )
         );
@@ -2727,6 +2767,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2749,6 +2790,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None,
             )
         );
@@ -2775,6 +2817,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2794,6 +2837,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
         vote_state.commission = 99;
@@ -2809,6 +2853,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None,
             )
         );
@@ -2833,6 +2878,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2856,6 +2902,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2870,7 +2917,8 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
-                None
+                None,
+                None,
             )
         );
 
@@ -2889,6 +2937,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None
             )
         );
@@ -2905,7 +2954,8 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
-                None
+                None,
+                None,
             )
         );
 
@@ -2930,6 +2980,7 @@ mod tests {
                 &StakeHistory::default(),
                 null_tracer(),
                 None,
+                None,
             )
         );
 
@@ -2953,6 +3004,7 @@ mod tests {
                 &vote_state,
                 &StakeHistory::default(),
                 null_tracer(),
+                None,
                 None,
             )
         );

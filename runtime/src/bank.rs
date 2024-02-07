@@ -615,7 +615,7 @@ pub(crate) struct StartBlockHeightAndRewards {
     /// the block height of the slot at which rewards distribution began
     pub(crate) start_block_height: u64,
     /// calculated epoch rewards pending distribution, outer Vec is by partition (one partition per block)
-    pub(crate) stake_rewards_by_partition: Arc<Vec<StakeRewards>>,
+    pub(crate) stake_rewards_by_partition: Option<Arc<Vec<StakeRewards>>>,
 }
 
 /// Represent whether bank is in the reward phase or not.
@@ -629,6 +629,18 @@ pub(crate) enum EpochRewardStatus {
     /// this bank is outside of the rewarding phase.
     #[default]
     Inactive,
+}
+
+impl EpochRewardStatus {
+    /// Create `Active` EpochRewardStatus omitting the actual stake reward.
+    ///
+    /// This `Marker` status field is used for serialize/deserialize bank to/from snapshots.
+    fn new_active_start_block_height_only(start_block_height: u64) -> EpochRewardStatus {
+        EpochRewardStatus::Active(StartBlockHeightAndRewards {
+            start_block_height: start_block_height,
+            stake_rewards_by_partition: None,
+        })
+    }
 }
 
 /// Manager for the state of all accounts and programs after processing its entries.
@@ -1118,7 +1130,7 @@ impl Bank {
     ) {
         self.epoch_reward_status = EpochRewardStatus::Active(StartBlockHeightAndRewards {
             start_block_height: self.block_height,
-            stake_rewards_by_partition: Arc::new(stake_rewards_by_partition),
+            stake_rewards_by_partition: Some(Arc::new(stake_rewards_by_partition)),
         });
     }
 
@@ -1611,16 +1623,55 @@ impl Bank {
         );
     }
 
+    /// Recompute partitioned stake reward when loading from snapshots
+    fn recompute_partitioned_stake_rewards(&mut self) {
+        if matches!(self.epoch_reward_status, EpochRewardStatus::Inactive) {
+            return;
+        }
+        let thread_pool = ThreadPoolBuilder::new().build().unwrap();
+        assert!(self.epoch() > 1);
+        let prev_epoch = self.epoch() - 1;
+        let mut metrics = RewardsMetrics::default();
+
+        let PartitionedRewardsCalculation {
+            vote_account_rewards: _,
+            stake_rewards_by_partition,
+            old_vote_balance_and_staked: _,
+            validator_rewards: _,
+            validator_rate: _,
+            foundation_rate: _,
+            prev_epoch_duration_in_years: _,
+            capitalization: _,
+        } = self.calculate_rewards_for_partitioning(
+            prev_epoch,
+            null_tracer(),
+            &thread_pool,
+            &mut metrics,
+        );
+
+        let StakeRewardCalculationPartitioned {
+            stake_rewards_by_partition,
+            total_stake_rewards_lamports: _,
+        } = stake_rewards_by_partition;
+
+        match self.epoch_reward_status {
+            EpochRewardStatus::Active(ref mut status) => {
+                status.stake_rewards_by_partition = Some(Arc::new(stake_rewards_by_partition));
+            }
+            EpochRewardStatus::Inactive => {}
+        }
+    }
+
     /// Process reward distribution for the block if it is inside reward interval.
     fn distribute_partitioned_epoch_rewards(&mut self) {
         let EpochRewardStatus::Active(status) = &self.epoch_reward_status else {
             return;
         };
-
         let height = self.block_height();
         let start_block_height = status.start_block_height;
         let credit_start = start_block_height + self.get_reward_calculation_num_blocks();
-        let credit_end_exclusive = credit_start + status.stake_rewards_by_partition.len() as u64;
+        let credit_end_exclusive =
+            credit_start + status.stake_rewards_by_partition.as_ref().unwrap().len() as u64;
         assert!(
             self.epoch_schedule.get_slots_in_epoch(self.epoch)
                 > credit_end_exclusive.saturating_sub(credit_start)
@@ -1629,7 +1680,7 @@ impl Bank {
         if height >= credit_start && height < credit_end_exclusive {
             let partition_index = height - credit_start;
             self.distribute_epoch_rewards_in_partition(
-                &status.stake_rewards_by_partition,
+                status.stake_rewards_by_partition.as_ref().unwrap(),
                 partition_index,
             );
         }
@@ -1743,6 +1794,10 @@ impl Bank {
         // from Stakes<Delegation> by reading the full account state from
         // accounts-db. Note that it is crucial that these accounts are loaded
         // at the right slot and match precisely with serialized Delegations.
+        //
+        // [On recompute rewards]: we only store stake delegation in the snapshot (NOT the actual stake account). When deserialize form the snapshot, we load the accounts from
+        // accounts_db. However, the loaded stake accounts may have changed because of receiving the payout of the rewards. Therefore, we can't recompute the stake rewards after
+        // epoch boundary.
         let stakes = Stakes::new(&fields.stakes, |pubkey| {
             let (account, _slot) = bank_rc.accounts.load_with_fixed_root(&ancestors, pubkey)?;
             Some(account)
@@ -1835,6 +1890,7 @@ impl Bank {
         );
         bank.fill_missing_sysvar_cache_entries();
         bank.rebuild_skipped_rewrites();
+        bank.recompute_partitioned_stake_rewards();
 
         // Sanity assertions between bank snapshot and genesis config
         // Consider removing from serializable bank state
@@ -2984,6 +3040,7 @@ impl Bank {
                         vote_state,
                         stake_history,
                         new_warmup_cooldown_rate_epoch,
+                        Some(self.epoch),
                     )
                     .unwrap_or(0)
                 })
@@ -3021,6 +3078,7 @@ impl Bank {
                                 vote_state,
                                 stake_history,
                                 new_warmup_cooldown_rate_epoch,
+                                Some(self.epoch),
                             )
                             .unwrap_or(0)
                         })
@@ -3096,6 +3154,12 @@ impl Bank {
 
                     let pre_lamport = stake_account.lamports();
 
+                    // [Recompute stake rewards] Even if we cache the
+                    // point_value, here by the time when we try to recalculate
+                    // stake_state from stake cache. vote_state changed (which
+                    // maybe fixable). But the stake_state may also changed
+                    // because of some stake accounts has already updated with
+                    // the new stake rewards.
                     let redeemed = stake_state::redeem_rewards(
                         rewarded_epoch,
                         stake_state,
@@ -3105,6 +3169,7 @@ impl Bank {
                         stake_history,
                         reward_calc_tracer.as_ref(),
                         new_warmup_cooldown_rate_epoch,
+                        Some(self.epoch),
                     );
 
                     let post_lamport = stake_account.lamports();
@@ -3224,6 +3289,7 @@ impl Bank {
                         stake_history,
                         reward_calc_tracer.as_ref(),
                         new_warmup_cooldown_rate_epoch,
+                        Some(self.epoch),
                     );
                     if let Ok((stakers_reward, voters_reward)) = redeemed {
                         // track voter rewards
@@ -7419,11 +7485,19 @@ impl Bank {
         Some(epoch_accounts_hash)
     }
 
-    /// Return the epoch_reward_status field on the bank to serialize
-    /// Returns none if we are NOT in the reward interval.
-    pub(crate) fn get_epoch_reward_status_to_serialize(&self) -> Option<&EpochRewardStatus> {
-        matches!(self.epoch_reward_status, EpochRewardStatus::Active(_))
-            .then_some(&self.epoch_reward_status)
+    /// Return the epoch_reward_status field on the bank with actual stake
+    /// rewards omitted to serialize for `Active`` status.
+    /// Returns none for `Inactive` status.
+    pub(crate) fn get_epoch_reward_status_to_serialize(&self) -> Option<EpochRewardStatus> {
+        match self.epoch_reward_status {
+            EpochRewardStatus::Active(ref status) => {
+                let status = EpochRewardStatus::new_active_start_block_height_only(
+                    status.start_block_height,
+                );
+                Some(status)
+            }
+            EpochRewardStatus::Inactive => None,
+        }
     }
 
     /// Convenience fn to get the Epoch Accounts Hash

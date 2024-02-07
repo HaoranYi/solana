@@ -225,6 +225,11 @@ impl Stakes<StakeAccount> {
     /// full account state for respective stake pubkeys. get_account function
     /// should return the account at the respective slot where stakes where
     /// cached.
+    ///
+    ///
+    /// [recompute stake]: when we load the bank from snapshot. Only Stakes<Delegation> are stored, which only stores the stake delegation information.
+    /// The full accounts store has to be loaded from the account_db. However, the accounts_db only have the most recent updated accounts. We can't know the
+    /// stake cache before at the epoch boundary that are used to compute the rewards.
     pub(crate) fn new<F>(stakes: &Stakes<Delegation>, get_account: F) -> Result<Self, Error>
     where
         F: Fn(&Pubkey) -> Option<AccountSharedData>,

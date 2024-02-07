@@ -540,6 +540,16 @@ impl VoteState {
                 self.epoch_credits.push((epoch, credits, credits));
             } else {
                 // else just move the current epoch
+                //
+                // [On Recompute Stake Rewards] reuse the old epoch_credit entry
+                // for new epoch will be a problem if we want to recompute stake
+                // rewards after epoch boundary.
+                // Let's say we at epoch = n. There is no vote credit for the validator at epoch n. epoch_credit looks like  (n-1, x0, x1) (n, x1, x1).
+                // Image there is a stake account with observed_credit y. x0 < y < x1.
+                // With the current reward calculation, at epoch n, y may receive the reward because y < x1 (last vote_credit).
+                // However, if we are recomputing reward at block after epoch boundary, the vote received some vote credit, now epoch_credits looks like (n-1, x0, x1) (n+1, x1, x1)
+                // need a feature flag to fix the issue!!!
+
                 self.epoch_credits.last_mut().unwrap().0 = epoch;
             }
 
@@ -625,8 +635,8 @@ impl VoteState {
         }
     }
 
-    /// Number of "credits" owed to this account from the mining pool. Submit this
-    /// VoteState to the Rewards program to trade credits for lamports.
+    /// Number of "credits" owed to this account from the mining pool for the most recent epoch.
+    /// Submit this VoteState to the Rewards program to trade credits for lamports.
     pub fn credits(&self) -> u64 {
         if self.epoch_credits.is_empty() {
             0
@@ -635,13 +645,49 @@ impl VoteState {
         }
     }
 
+    /// Number of "credits" owed to this account from the mining pool before the given `epoch`.
+    /// Submit this VoteState to the Rewards program to trade credits for lamports.
+    pub fn credits_before_epoch(&self, epoch: Epoch) -> u64 {
+        // [On Recompute Stake Rewards] because epoch_credit reuses the old epoch_credit entry if there is no new vote credits (see `fn increment_credit`).
+        // If we just look for epoch - 1. We many not find the entry and miss some rewards.
+        // Here is an example.
+        // Let's say we at the end of epoch = n. There is no vote credit for the validator for epoch n. epoch_credit looks like  (n-1, x0, x1) (n, x1, x1).
+        // Image there is a stake account with observed_credit y. x0 < y < x1.
+        // With the current reward calculation, at epoch n, y should receive the reward because y < x1 (last vote_credit).
+        // However, if we are recomputing reward at block after epoch boundary, the voter received some vote credit, now epoch_credits looks like (n-1, x0, x1) (n+1, x1, x1) due to reuse of vote rewards.
+        // If we just look for epoch n, we won't find an entry and return 0 (vote_credit). y>0, which will lead us to skip the rewards.
+        // Therefore, we have use `c.0 < epoch`.
+        let c = self.epoch_credits.iter().rev().find(|c| c.0 < epoch);
+
+        if let Some(c) = c {
+            c.1
+        } else {
+            0
+        }
+    }
+
     /// Number of "credits" owed to this account from the mining pool on a per-epoch basis,
     ///  starting from credits observed.
     /// Each tuple of (Epoch, u64, u64) is read as (epoch, credits, prev_credits), where
     ///   credits for each epoch is credits - prev_credits; while redundant this makes
     ///   calculating rewards over partial epochs nice and simple
-    pub fn epoch_credits(&self) -> &Vec<(Epoch, u64, u64)> {
-        &self.epoch_credits
+    pub fn epoch_credits(&self) -> &[(Epoch, u64, u64)] {
+        &self.epoch_credits[..]
+    }
+
+    /// Number of "credits" owed to this account from the mining pool on a per-epoch basis BEFORE the
+    /// given `epoch`,
+    /// Each tuple of (Epoch, u64, u64) is read as (epoch, credits, prev_credits), where
+    ///   credits for each epoch is credits - prev_credits; while redundant this makes
+    ///   calculating rewards over partial epochs nice and simple
+    pub fn epoch_credits_before(&self, epoch: Epoch) -> &[(Epoch, u64, u64)] {
+        let index = self.epoch_credits.iter().rev().position(|c| c.0 < epoch);
+        if let Some(index) = index {
+            let end = self.epoch_credits.len() - index;
+            &self.epoch_credits[..end]
+        } else {
+            &self.epoch_credits[0..0] // return empty when not found
+        }
     }
 
     pub fn set_new_authorized_voter<F>(
@@ -965,7 +1011,7 @@ mod tests {
         let mut vote_state = VoteState::default();
 
         assert_eq!(vote_state.credits(), 0);
-        assert_eq!(vote_state.epoch_credits().clone(), vec![]);
+        assert_eq!(vote_state.epoch_credits(), vec![]);
 
         let mut expected = vec![];
         let mut credits = 0;
@@ -983,7 +1029,7 @@ mod tests {
         }
 
         assert_eq!(vote_state.credits(), credits);
-        assert_eq!(vote_state.epoch_credits().clone(), expected);
+        assert_eq!(vote_state.epoch_credits(), expected);
     }
 
     #[test]

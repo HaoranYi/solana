@@ -424,7 +424,7 @@ impl<'a> TypeContext<'a> for Context {
             incremental_snapshot_persistence.cloned(),
             epoch_accounts_hash.copied(),
             matches!(epoch_reward_status, EpochRewardStatus::Active(_))
-                .then_some(&epoch_reward_status),
+                .then_some(epoch_reward_status),
         ) {
             BankFieldsToSerialize::WithoutEpochRewardStatus(data) => {
                 bincode::serialize_into(stream_writer, &data)
@@ -457,7 +457,7 @@ enum BankFieldsToSerialize<'a, T: Serialize> {
             u64,
             Option<BankIncrementalSnapshotPersistence>,
             Option<Hash>,
-            &'a EpochRewardStatus,
+            EpochRewardStatus,
         ),
     ),
 }
@@ -470,7 +470,7 @@ fn get_serialize_bank_fields<'a, T: Serialize>(
     lamports_per_signature: u64,
     incremental_snapshot_persistence: Option<BankIncrementalSnapshotPersistence>,
     epoch_accounts_hash: Option<Hash>,
-    epoch_reward_status: Option<&'a EpochRewardStatus>,
+    epoch_reward_status: Option<EpochRewardStatus>,
 ) -> BankFieldsToSerialize<'a, T> {
     match epoch_reward_status {
         Some(epoch_reward_status) => BankFieldsToSerialize::WithEpochRewardStatus((

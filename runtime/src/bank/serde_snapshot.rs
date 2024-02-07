@@ -413,7 +413,7 @@ mod tests {
             // assert epoch_reward_status is the same as the set epoch reward status
             let epoch_reward_status = dbank
                 .get_epoch_reward_status_to_serialize()
-                .unwrap_or(&EpochRewardStatus::Inactive);
+                .unwrap_or(EpochRewardStatus::Inactive);
             if let Some(rewards) = epoch_reward_status_active {
                 assert_matches!(epoch_reward_status, EpochRewardStatus::Active(_));
                 if let EpochRewardStatus::Active(StartBlockHeightAndRewards {
@@ -421,8 +421,11 @@ mod tests {
                     ref stake_rewards_by_partition,
                 }) = epoch_reward_status
                 {
-                    assert_eq!(*start_block_height, 1);
-                    assert_eq!(&rewards[..], &stake_rewards_by_partition[..]);
+                    assert_eq!(start_block_height, 1);
+                    assert_eq!(
+                        rewards[..],
+                        stake_rewards_by_partition.as_ref().unwrap()[..]
+                    );
                 } else {
                     unreachable!("Epoch reward status should NOT be inactive.");
                 }
@@ -506,7 +509,7 @@ mod tests {
             // assert epoch_reward_status is the same as the set epoch reward status
             let epoch_reward_status = dbank
                 .get_epoch_reward_status_to_serialize()
-                .unwrap_or(&EpochRewardStatus::Inactive);
+                .unwrap_or(EpochRewardStatus::Inactive);
             if let Some(rewards) = epoch_reward_status_active {
                 assert_matches!(epoch_reward_status, EpochRewardStatus::Active(_));
                 if let EpochRewardStatus::Active(StartBlockHeightAndRewards {
@@ -514,8 +517,11 @@ mod tests {
                     ref stake_rewards_by_partition,
                 }) = epoch_reward_status
                 {
-                    assert_eq!(*start_block_height, 1);
-                    assert_eq!(&rewards[..], &stake_rewards_by_partition[..]);
+                    assert_eq!(start_block_height, 1);
+                    assert_eq!(
+                        rewards[..],
+                        stake_rewards_by_partition.as_ref().unwrap()[..]
+                    );
                 } else {
                     unreachable!("Epoch reward status should NOT be inactive.");
                 }
@@ -595,7 +601,7 @@ mod tests {
         // epoch_reward status should default to `Inactive`
         let epoch_reward_status = dbank
             .get_epoch_reward_status_to_serialize()
-            .unwrap_or(&EpochRewardStatus::Inactive);
+            .unwrap_or(EpochRewardStatus::Inactive);
         assert_matches!(epoch_reward_status, EpochRewardStatus::Inactive);
     }
 

@@ -960,7 +960,7 @@ impl JsonRpcRequestProcessor {
                 };
 
                 let epoch_credits = vote_state.epoch_credits();
-                let epoch_credits = if epoch_credits.len()
+                let epoch_credits: Vec<_> = if epoch_credits.len()
                     > MAX_RPC_VOTE_ACCOUNT_INFO_EPOCH_CREDITS_HISTORY
                 {
                     epoch_credits
@@ -969,7 +969,7 @@ impl JsonRpcRequestProcessor {
                         .cloned()
                         .collect()
                 } else {
-                    epoch_credits.clone()
+                    epoch_credits.to_vec()
                 };
 
                 Some(RpcVoteAccountInfo {
