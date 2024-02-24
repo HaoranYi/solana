@@ -433,6 +433,67 @@ mod tests {
     }
 
     #[test]
+    fn test_reward_serialize_example() {
+        solana_logger::setup();
+
+        let validator_pubkeys = (0..1000)
+            .map(|_| solana_sdk::pubkey::new_rand())
+            .collect::<Vec<_>>();
+        let validator_keypairs = (0..1000).map(|_| Keypair::new()).collect::<Vec<_>>();
+
+        let sample_rewards = (0..1000_000)
+            .map(|i| {
+                if i % 5000 == 0 {
+                    println!("{}", i);
+                }
+                StakeReward::new_from(&validator_pubkeys, &validator_keypairs)
+            })
+            .collect::<Vec<_>>();
+        println!("haha");
+        for epoch_reward_status_active in [Some(vec![sample_rewards])] {
+            let (genesis_config, _) = create_genesis_config(500);
+
+            let bank0 = Arc::new(Bank::new_for_tests(&genesis_config));
+            bank0.squash();
+            let mut bank = Bank::new_from_parent(bank0.clone(), &Pubkey::default(), 1);
+
+            add_root_and_flush_write_cache(&bank0);
+            bank.rc
+                .accounts
+                .accounts_db
+                .set_accounts_delta_hash(bank.slot(), AccountsDeltaHash(Hash::new_unique()));
+            bank.rc.accounts.accounts_db.set_accounts_hash(
+                bank.slot(),
+                (AccountsHash(Hash::new_unique()), u64::default()),
+            );
+
+            // Set extra fields
+            bank.fee_rate_governor.lamports_per_signature = 7000;
+
+            if let Some(rewards) = epoch_reward_status_active.as_ref() {
+                assert_eq!(bank.block_height(), 1);
+                bank.set_epoch_reward_status_active(rewards.clone());
+            }
+
+            // Serialize
+            let snapshot_storages = bank.get_snapshot_storages(None);
+
+            let data_file = std::fs::File::create("foo.snap").unwrap();
+            let mut writer = std::io::BufWriter::new(data_file);
+
+            crate::serde_snapshot::bank_to_stream(
+                SerdeStyle::Newer,
+                &mut std::io::BufWriter::new(&mut writer),
+                &bank,
+                &get_storages_to_serialize(&snapshot_storages),
+            )
+            .unwrap();
+
+            writer.flush();
+        }
+    }
+
+    #[test]
     fn test_extra_fields_full_snapshot_archive() {
         solana_logger::setup();
 

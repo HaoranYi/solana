@@ -66,6 +66,46 @@ use {
 // These functions/fields are only usable from a dev context (i.e. tests and benches)
 #[cfg(feature = "dev-context-only-utils")]
 impl StakeReward {
+    pub fn new_from(validator_pubkeys: &Vec<Pubkey>, validator_keypairs: &Vec<Keypair>) -> Self {
+        let mut rng = rand::thread_rng();
+
+        let rent = Rent::free();
+
+        let i = rng.gen_range(0..1000);
+
+        let validator_pubkey = &validator_pubkeys[i];
+        let validator_stake_lamports = rng.gen_range(1..200);
+        let validator_staking_keypair = &validator_keypairs[i];
+        let validator_voting_keypair = &validator_keypairs[i];
+
+        let validator_vote_account = vote_state::create_account(
+            &validator_voting_keypair.pubkey(),
+            &validator_pubkey,
+            10,
+            validator_stake_lamports,
+        );
+
+        let validator_stake_account = stake_state::create_account(
+            &validator_staking_keypair.pubkey(),
+            &validator_voting_keypair.pubkey(),
+            &validator_vote_account,
+            &rent,
+            validator_stake_lamports,
+        );
+
+        Self {
+            stake_pubkey: Pubkey::new_unique(),
+            stake_reward_info: RewardInfo {
+                reward_type: RewardType::Staking,
+                lamports: rng.gen_range(1..200),
+                post_balance: 0,  /* unused atm */
+                commission: None, /* unused atm */
+            },
+
+            stake_account: validator_stake_account,
+        }
+    }
+
     pub fn new_random() -> Self {
         let mut rng = rand::thread_rng();
 
