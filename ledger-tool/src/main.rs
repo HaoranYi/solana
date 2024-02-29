@@ -41,12 +41,17 @@ use {
     solana_ledger::{
         blockstore::{create_new_ledger, Blockstore},
         blockstore_options::{AccessType, LedgerColumnOptions},
-        blockstore_processor::ProcessSlotCallback,
+        blockstore_processor::{
+            ProcessSlotCallback, TransactionStatusMessage, TransactionStatusSender,
+        },
         use_snapshot_archives_at_startup,
     },
     solana_measure::{measure, measure::Measure},
     solana_runtime::{
-        bank::{bank_hash_details, Bank, RewardCalculationEvent},
+        bank::{
+            bank_hash_details::{self, BankHashSlotDetails, BashHashTransaction},
+            Bank, RewardCalculationEvent,
+        },
         bank_forks::BankForks,
         snapshot_archive_info::SnapshotArchiveInfoGetter,
         snapshot_bank_utils,
@@ -73,6 +78,7 @@ use {
         transaction::{MessageHash, SanitizedTransaction, SimpleAddressLoader},
     },
     solana_stake_program::{points::PointValue, stake_state},
+    solana_transaction_status::UiInstruction,
     solana_unified_scheduler_pool::DefaultSchedulerPool,
     solana_vote_program::{
         self,
@@ -83,6 +89,7 @@ use {
         ffi::OsStr,
         fs::File,
         io::{self, Write},
+        mem::swap,
         num::NonZeroUsize,
         path::{Path, PathBuf},
         process::{exit, Command, Stdio},
@@ -1080,7 +1087,7 @@ fn main() {
                     Arg::with_name("record_slots_config")
                         .long("record-slots-config")
                         .default_value("hash-only")
-                        .possible_values(&["hash-only", "accounts"])
+                        .possible_values(&["hash-only", "accounts", "tx", "tx-accounts"])
                         .requires("record_slots")
                         .help("In the slot recording, include bank details or not"),
                 ),
@@ -1609,6 +1616,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        None,
                     );
 
                     println!(
@@ -1634,6 +1642,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        None,
                     );
                     println!("{}", &bank_forks.read().unwrap().working_bank().hash());
                 }
@@ -1666,6 +1675,9 @@ fn main() {
                         exit(1);
                     }
 
+                    let mut transaction_status_sender = None;
+                    let mut tx_receiver = None;
+
                     let (slot_callback, record_slots_file, recorded_slots) = if arg_matches
                         .occurrences_of("record_slots")
                         > 0
@@ -1677,19 +1689,33 @@ fn main() {
                             exit(1);
                         });
 
-                        let include_bank =
+                        let (include_bank, include_tx) =
                             match arg_matches.value_of("record_slots_config").unwrap() {
-                                "hash-only" => false,
-                                "accounts" => true,
+                                "hash-only" => (false, false),
+                                "tx" => (false, true),
+                                "accounts" => (true, false),
+                                "tx-accounts" => (true, true),
                                 _ => unreachable!(),
                             };
 
                         let slot_hashes = Arc::new(Mutex::new(Vec::new()));
 
+                        if include_tx {
+                            let (sender, receiver) = crossbeam_channel::unbounded();
+
+                            transaction_status_sender = Some(TransactionStatusSender { sender });
+
+                            let slots = Arc::clone(&slot_hashes);
+
+                            tx_receiver = Some(std::thread::spawn(move || {
+                                record_transactions(receiver, slots);
+                            }));
+                        }
+
                         let slot_callback = Arc::new({
                             let slots = Arc::clone(&slot_hashes);
                             move |bank: &Bank| {
-                                let slot_details = if include_bank {
+                                let mut details = if include_bank {
                                     bank_hash_details::BankHashSlotDetails::try_from(bank).unwrap()
                                 } else {
                                     bank_hash_details::BankHashSlotDetails {
@@ -1699,7 +1725,21 @@ fn main() {
                                     }
                                 };
 
-                                slots.lock().unwrap().push(slot_details);
+                                let mut slots = slots.lock().unwrap();
+
+                                if let Some(recorded_slot) =
+                                    slots.iter_mut().find(|f| f.slot == details.slot)
+                                {
+                                    // copy all fields except transactions
+                                    swap(
+                                        &mut recorded_slot.transactions,
+                                        &mut details.transactions,
+                                    );
+
+                                    *recorded_slot = details;
+                                } else {
+                                    slots.push(details);
+                                }
                             }
                         });
 
@@ -1776,6 +1816,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        transaction_status_sender,
                     );
 
                     if print_accounts_stats {
@@ -1789,6 +1830,10 @@ fn main() {
                                 warn!("Unable to write bank hash_details file: {err}");
                             })
                             .ok();
+                    }
+
+                    if let Some(tx_receiver) = tx_receiver {
+                        tx_receiver.join().unwrap();
                     }
 
                     if let Some(recorded_slots_file) = record_slots_file {
@@ -1833,6 +1878,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        None,
                     );
 
                     let dot = graph_forks(&bank_forks.read().unwrap(), &graph_config);
@@ -2006,6 +2052,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        None,
                     );
                     let mut bank = bank_forks
                         .read()
@@ -2399,6 +2446,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        None,
                     );
                     let bank = bank_forks.read().unwrap().working_bank();
 
@@ -2451,6 +2499,7 @@ fn main() {
                         process_options,
                         snapshot_archive_path,
                         incremental_snapshot_archive_path,
+                        None,
                     );
                     let bank_forks = bank_forks.read().unwrap();
                     let slot = bank_forks.working_bank().slot();
@@ -2972,4 +3021,66 @@ fn main() {
     };
     measure_total_execution_time.stop();
     info!("{}", measure_total_execution_time);
+}
+
+fn record_transactions(
+    recv: crossbeam_channel::Receiver<TransactionStatusMessage>,
+    slots: Arc<Mutex<Vec<BankHashSlotDetails>>>,
+) {
+    for tsm in recv {
+        if let TransactionStatusMessage::Batch(batch) = tsm {
+            let slot = batch.bank.slot();
+
+            assert_eq!(batch.transactions.len(), batch.execution_results.len());
+
+            let transactions: Vec<_> = batch
+                .transactions
+                .iter()
+                .enumerate()
+                .map(|(no, tx)| {
+                    let message = tx.message();
+
+                    let accounts: Vec<String> = message
+                        .account_keys()
+                        .iter()
+                        .map(|acc| acc.to_string())
+                        .collect();
+
+                    let instructions = message
+                        .instructions()
+                        .iter()
+                        .map(|ix| UiInstruction::parse(ix, &message.account_keys(), None))
+                        .collect();
+
+                    let execution_results = batch.execution_results[no].clone();
+
+                    let is_simple_vote_tx = tx.is_simple_vote_transaction();
+
+                    BashHashTransaction {
+                        accounts,
+                        instructions,
+                        is_simple_vote_tx,
+                        execution_results,
+                        index: batch.transaction_indexes[no],
+                    }
+                })
+                .collect();
+
+            let mut slots = slots.lock().unwrap();
+
+            if let Some(recorded_slot) = slots.iter_mut().find(|f| f.slot == slot) {
+                recorded_slot.transactions.extend(transactions);
+            } else {
+                slots.push(BankHashSlotDetails {
+                    slot,
+                    transactions,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    for slot in slots.lock().unwrap().iter_mut() {
+        slot.transactions.sort_by(|a, b| a.index.cmp(&b.index));
+    }
 }

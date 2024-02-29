@@ -18,6 +18,8 @@ use {
         hash::Hash,
         pubkey::Pubkey,
     },
+    solana_svm::transaction_results::TransactionExecutionDetails,
+    solana_transaction_status::UiInstruction,
     std::str::FromStr,
 };
 
@@ -65,6 +67,15 @@ impl BankHashDetails {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, Default)]
+pub struct BashHashTransaction {
+    pub index: usize,
+    pub accounts: Vec<String>,
+    pub instructions: Vec<UiInstruction>,
+    pub is_simple_vote_tx: bool,
+    pub execution_results: Option<TransactionExecutionDetails>,
+}
+
 /// The components that go into a bank hash calculation for a single bank/slot.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, Default)]
 pub struct BankHashSlotDetails {
@@ -85,6 +96,9 @@ pub struct BankHashSlotDetails {
     #[serde(skip_serializing_if = "bankhashaccounts_is_empty")]
     #[serde(default)]
     pub accounts: BankHashAccounts,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub transactions: Vec<BashHashTransaction>,
 }
 
 fn u64_is_zero(val: &u64) -> bool {
@@ -113,6 +127,7 @@ impl BankHashSlotDetails {
             signature_count,
             last_blockhash: last_blockhash.to_string(),
             accounts,
+            transactions: Vec::new(),
         }
     }
 }
