@@ -1302,13 +1302,40 @@ fn streaming_unarchive_snapshot(
     file_sender: Sender<PathBuf>,
     account_paths: Vec<PathBuf>,
     ledger_dir: PathBuf,
-    snapshot_archive_path: PathBuf,
+    //snapshot_archive_path: PathBuf,
     archive_format: ArchiveFormat,
+    slice: &'static [u8],
     num_threads: usize,
 ) -> Vec<JoinHandle<()>> {
     let account_paths = Arc::new(account_paths);
     let ledger_dir = Arc::new(ledger_dir);
-    let shared_buffer = untar_snapshot_create_shared_buffer(&snapshot_archive_path, archive_format);
+
+    // use memmap2::MmapOptions;
+    // use std::slice;
+
+    // let open_file = || {
+    //     fs::File::open(&snapshot_archive_path)
+    //         .map_err(|err| {
+    //             IoError::other(format!(
+    //                 "failed to open snapshot archive '{}': {err}",
+    //                 snapshot_archive_path.display(),
+    //             ))
+    //         })
+    //         .unwrap()
+    // };
+
+    // println!("zz");
+    // // mmap the snapshot file for fast read
+    // let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
+    // let len = mmap.len();
+
+    // println!("zz1 {}", len);
+    // let ptr = &mmap[0] as *const u8;
+    // let slice = unsafe { slice::from_raw_parts(ptr, len) };
+
+    // println!("zz2 {}", slice[1]);
+
+    let shared_buffer = untar_snapshot_create_shared_buffer_slice(slice, archive_format);
 
     // All shared buffer readers need to be created before the threads are spawned
     #[allow(clippy::needless_collect)]
@@ -1376,6 +1403,21 @@ fn create_snapshot_meta_files_for_unarchived_snapshot(unpack_dir: impl AsRef<Pat
 /// Perform the common tasks when unarchiving a snapshot.  Handles creating the temporary
 /// directories, untaring, reading the version file, and then returning those fields plus the
 /// rebuilt storage
+///
+/// Experiment with mmap snapshot file for faster decompress read.
+///
+///
+// ~/src/solana$ ./cargo run --release --bin agave-ledger-tool -- --ledger ~/ledger  verify --halt-at-slot 255344926 --use-snapshot-archives-at-startup always 2>&1 | tee a
+//
+// master:
+// [2024-03-20T14:04:47.839756392Z INFO  solana_runtime::snapshot_utils::snapshot_storage_rebuilder] rebuilt storages for 419295/421121 slots with 0 collisions
+// [2024-03-20T14:04:48.266297285Z INFO  solana_accounts_db::shared_buffer_reader] reading entire decompressed file took: 240233947 us, bytes: 252421316608, read_us: 180759667, waiting_for_buffer_us: 59175795, largest fetch: 99977728, error: Ok(0)
+// [2024-03-20T14:04:48.276730939Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
+// [2024-03-20T14:04:48.313800618Z INFO  solana_accounts_db::hardened_unpack] unpacked 105281 entries total
+// [2024-03-20T14:04:48.836073057Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
+// [2024-03-20T14:04:49.310006793Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
+// [2024-03-20T14:04:49.386534885Z INFO  solana_runtime::snapshot_utils] snapshot untar took 241.3s
+
 fn unarchive_snapshot(
     bank_snapshots_dir: impl AsRef<Path>,
     unpacked_snapshots_dir_prefix: &'static str,
@@ -1392,12 +1434,39 @@ fn unarchive_snapshot(
     let unpacked_snapshots_dir = unpack_dir.path().join("snapshots");
 
     let (file_sender, file_receiver) = crossbeam_channel::unbounded();
-    streaming_unarchive_snapshot(
+
+    use memmap2::MmapOptions;
+    use std::slice;
+
+    let open_file = || {
+        fs::File::open(&snapshot_archive_path)
+            .map_err(|err| {
+                IoError::other(format!(
+                    "failed to open snapshot archive '{}': {err}",
+                    snapshot_archive_path.as_ref().to_path_buf().display(),
+                ))
+            })
+            .unwrap()
+    };
+
+    println!("zz");
+    // mmap the snapshot file for fast read
+    let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
+    let len = mmap.len();
+
+    println!("zz1 {}", len);
+    let ptr = &mmap[0] as *const u8;
+    let slice: &'static [u8] = unsafe { slice::from_raw_parts(ptr, len) };
+
+    println!("zz2 {}", slice[1]);
+
+    let handles = streaming_unarchive_snapshot(
         file_sender,
         account_paths.to_vec(),
         unpack_dir.path().to_path_buf(),
-        snapshot_archive_path.as_ref().to_path_buf(),
+        //snapshot_archive_path.as_ref().to_path_buf(),
         archive_format,
+        slice,
         parallel_divisions,
     );
 
@@ -1416,6 +1485,10 @@ fn unarchive_snapshot(
     info!("{}", measure_untar);
 
     create_snapshot_meta_files_for_unarchived_snapshot(&unpack_dir)?;
+
+    for h in handles {
+        let _ = h.join();
+    }
 
     let RebuiltSnapshotStorage {
         snapshot_version,
@@ -1978,6 +2051,21 @@ fn untar_snapshot_create_shared_buffer(
             SharedBuffer::new(lz4::Decoder::new(BufReader::new(open_file())).unwrap())
         }
         ArchiveFormat::Tar => SharedBuffer::new(BufReader::new(open_file())),
+    }
+}
+
+fn untar_snapshot_create_shared_buffer_slice(
+    slice: &'static [u8],
+    archive_format: ArchiveFormat,
+) -> SharedBuffer {
+    match archive_format {
+        ArchiveFormat::TarBzip2 => SharedBuffer::new(BzDecoder::new(slice)),
+        ArchiveFormat::TarGzip => SharedBuffer::new(GzDecoder::new(slice)),
+        ArchiveFormat::TarZstd => {
+            SharedBuffer::new(zstd::stream::read::Decoder::new(slice).unwrap())
+        }
+        ArchiveFormat::TarLz4 => SharedBuffer::new(lz4::Decoder::new(slice).unwrap()),
+        ArchiveFormat::Tar => SharedBuffer::new(slice),
     }
 }
 
