@@ -1417,6 +1417,16 @@ fn create_snapshot_meta_files_for_unarchived_snapshot(unpack_dir: impl AsRef<Pat
 // [2024-03-20T14:04:48.836073057Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
 // [2024-03-20T14:04:49.310006793Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
 // [2024-03-20T14:04:49.386534885Z INFO  solana_runtime::snapshot_utils] snapshot untar took 241.3s
+//
+// This:
+// [2024-03-20T16:04:17.221009081Z INFO  solana_accounts_db::shared_buffer_reader] reading entire decompressed file took: 189452696 us, bytes: 252421316608, read_us: 178386155, waiting_for_buffer_us: 10771884, largest fetch: 99977728, error: Ok(0)
+// [2024-03-20T16:04:17.222536200Z INFO  solana_runtime::snapshot_utils::snapshot_storage_rebuilder] rebuilt storages for 420741/421121 slots with 0 collisions
+// [2024-03-20T16:04:17.231850978Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
+// [2024-03-20T16:04:17.234967316Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
+// [2024-03-20T16:04:17.261737895Z INFO  solana_accounts_db::hardened_unpack] unpacked 105282 entries total
+// [2024-03-20T16:04:17.313563443Z INFO  solana_accounts_db::hardened_unpack] unpacked 105281 entries total
+// [2024-03-20T16:04:17.754468039Z INFO  solana_runtime::snapshot_utils] snapshot untar took 190.0s
+// [2024-03-20T16:04:19.395139542Z INFO  solana_runtime::snapshot_utils] snapshot version: 1.2.0
 
 fn unarchive_snapshot(
     bank_snapshots_dir: impl AsRef<Path>,
