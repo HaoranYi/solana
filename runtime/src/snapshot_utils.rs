@@ -1302,38 +1302,12 @@ fn streaming_unarchive_snapshot(
     file_sender: Sender<PathBuf>,
     account_paths: Vec<PathBuf>,
     ledger_dir: PathBuf,
-    //snapshot_archive_path: PathBuf,
     archive_format: ArchiveFormat,
     slice: &'static [u8],
     num_threads: usize,
 ) -> Vec<JoinHandle<()>> {
     let account_paths = Arc::new(account_paths);
     let ledger_dir = Arc::new(ledger_dir);
-
-    // use memmap2::MmapOptions;
-    // use std::slice;
-
-    // let open_file = || {
-    //     fs::File::open(&snapshot_archive_path)
-    //         .map_err(|err| {
-    //             IoError::other(format!(
-    //                 "failed to open snapshot archive '{}': {err}",
-    //                 snapshot_archive_path.display(),
-    //             ))
-    //         })
-    //         .unwrap()
-    // };
-
-    // println!("zz");
-    // // mmap the snapshot file for fast read
-    // let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
-    // let len = mmap.len();
-
-    // println!("zz1 {}", len);
-    // let ptr = &mmap[0] as *const u8;
-    // let slice = unsafe { slice::from_raw_parts(ptr, len) };
-
-    // println!("zz2 {}", slice[1]);
 
     let shared_buffer = untar_snapshot_create_shared_buffer_slice(slice, archive_format);
 
@@ -1459,22 +1433,16 @@ fn unarchive_snapshot(
             .unwrap()
     };
 
-    println!("zz");
     // mmap the snapshot file for fast read
     let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
     let len = mmap.len();
-
-    println!("zz1 {}", len);
     let ptr = &mmap[0] as *const u8;
     let slice: &'static [u8] = unsafe { slice::from_raw_parts(ptr, len) };
-
-    println!("zz2 {}", slice[1]);
 
     let handles = streaming_unarchive_snapshot(
         file_sender,
         account_paths.to_vec(),
         unpack_dir.path().to_path_buf(),
-        //snapshot_archive_path.as_ref().to_path_buf(),
         archive_format,
         slice,
         parallel_divisions,
@@ -2037,6 +2005,7 @@ fn unpack_snapshot_local(
     Ok(unpacked_append_vec_map)
 }
 
+#[cfg(feature = "dev-context-only-utils")]
 fn untar_snapshot_create_shared_buffer(
     snapshot_tar: &Path,
     archive_format: ArchiveFormat,
