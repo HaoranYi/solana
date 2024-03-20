@@ -1230,10 +1230,13 @@ pub fn verify_and_unarchive_snapshots(
     Option<UnarchivedSnapshot>,
     AtomicAppendVecId,
 )> {
+    println!("hoho1");
     check_are_snapshots_compatible(
         full_snapshot_archive_info,
         incremental_snapshot_archive_info,
     )?;
+
+    println!("hoho2");
 
     let parallel_divisions = (num_cpus::get() / 4).clamp(1, PARALLEL_UNTAR_READERS_DEFAULT);
 
@@ -1248,6 +1251,8 @@ pub fn verify_and_unarchive_snapshots(
         parallel_divisions,
         next_append_vec_id.clone(),
     )?;
+
+    println!("hoho3");
 
     let unarchived_incremental_snapshot =
         if let Some(incremental_snapshot_archive_info) = incremental_snapshot_archive_info {
@@ -1286,12 +1291,63 @@ fn spawn_unpack_snapshot_thread_one(
     Builder::new()
         .name(format!("solUnpkSnpsht{thread_index:02}"))
         .spawn(move || {
-            let reader = untar_snapshot_reader(&snapshot_archive_path, archive_format);
+            //            let reader = untar_snapshot_reader(&snapshot_archive_path, archive_format);
+            //            let mut archive = Archive::new(reader);
+            //
+            //            for entry in archive.entries().unwrap() {
+            //                let mut entry = entry.unwrap();
+            //                let path = entry.path().unwrap();
+            //                let path_str = path.display().to_string();
+            //                println!("yy {}", path_str);
+            //            }
+            //
+            //fn untar_snapshot_reader(snapshot_tar: &Path, archive_format: ArchiveFormat) -> Box<dyn Read> {
+
+            use memmap2::MmapOptions;
+            use std::slice;
+
+            let open_file = || {
+                fs::File::open(&snapshot_archive_path)
+                    .map_err(|err| {
+                        IoError::other(format!(
+                            "failed to open snapshot archive '{}': {err}",
+                            snapshot_archive_path.display(),
+                        ))
+                    })
+                    .unwrap()
+            };
+
+            println!("zz");
+            // mmap the snapshot file for fast read
+            let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
+            let len = mmap.len();
+
+            println!("zz1 {}", len);
+            let ptr = &mmap[0] as *const u8;
+            let slice = unsafe { slice::from_raw_parts(ptr, len) };
+
+            println!("zz2 {}", slice[1]);
+
+            let reader: Box<dyn Read> = match archive_format {
+                ArchiveFormat::TarBzip2 => Box::new(BzDecoder::new(slice)),
+                ArchiveFormat::TarGzip => Box::new(GzDecoder::new(slice)),
+                ArchiveFormat::TarZstd => {
+                    Box::new(zstd::stream::read::Decoder::new(slice).unwrap())
+                }
+                ArchiveFormat::TarLz4 => Box::new(lz4::Decoder::new(slice).unwrap()),
+                ArchiveFormat::Tar => Box::new(BufReader::new(slice)),
+            };
             let mut archive = Archive::new(reader);
+
+            //            let reader = untar_snapshot_reader(&snapshot_archive_path, archive_format);
+            //            let mut archive = Archive::new(reader);
+
             let parallel_selector = Some(ParallelSelector {
                 index: 0,
                 divisions: 1,
             });
+
+            println!("hihi");
 
             hardened_unpack::streaming_unpack_snapshot(
                 &mut archive,
@@ -1406,6 +1462,7 @@ fn unarchive_snapshot(
         .tempdir_in(bank_snapshots_dir)?;
     let unpacked_snapshots_dir = unpack_dir.path().join("snapshots");
 
+    println!("hehe1");
     let (file_sender, file_receiver) = crossbeam_channel::unbounded();
     streaming_unarchive_snapshot(
         file_sender,
@@ -1416,9 +1473,13 @@ fn unarchive_snapshot(
         parallel_divisions,
     );
 
+    println!("hehe2--");
+
     let num_rebuilder_threads = num_cpus::get_physical()
         .saturating_sub(parallel_divisions)
         .max(1);
+
+    println!("hehe3");
     let (version_and_storages, measure_untar) = measure!(
         SnapshotStorageRebuilder::rebuild_storage(
             file_receiver,
@@ -1984,11 +2045,16 @@ fn untar_snapshot_reader(snapshot_tar: &Path, archive_format: ArchiveFormat) -> 
             .unwrap()
     };
 
+    println!("zz");
     // mmap the snapshot file for fast read
     let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
     let len = mmap.len();
+
+    println!("zz1 {}", len);
     let ptr = &mmap[0] as *const u8;
     let slice = unsafe { slice::from_raw_parts(ptr, len) };
+
+    println!("zz2 {}", slice[1]);
 
     match archive_format {
         ArchiveFormat::TarBzip2 => Box::new(BzDecoder::new(slice)),

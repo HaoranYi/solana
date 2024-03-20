@@ -294,6 +294,8 @@ pub fn bank_from_snapshot_archives(
             )
     );
 
+    info!("haha1");
+
     let (unarchived_full_snapshot, mut unarchived_incremental_snapshot, next_append_vec_id) =
         verify_and_unarchive_snapshots(
             bank_snapshots_dir,
@@ -301,6 +303,8 @@ pub fn bank_from_snapshot_archives(
             incremental_snapshot_archive_info,
             account_paths,
         )?;
+
+    info!("haha2");
 
     let mut storage = unarchived_full_snapshot.storage;
     if let Some(ref mut unarchive_preparation_result) = unarchived_incremental_snapshot {

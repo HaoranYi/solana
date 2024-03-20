@@ -108,6 +108,8 @@ where
         let path = entry.path()?;
         let path_str = path.display().to_string();
 
+        //println!("zz2 {}", &path_str);
+
         // Although the `tar` crate safely skips at the actual unpacking, fail
         // first by ourselves when there are odd paths like including `..` or /
         // for our clearer pattern matching reasoning:
@@ -356,6 +358,8 @@ where
 {
     assert!(!account_paths.is_empty());
     let mut i = 0;
+
+    println!("huhu");
 
     unpack_archive(
         archive,
