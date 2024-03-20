@@ -1274,6 +1274,38 @@ pub fn verify_and_unarchive_snapshots(
 }
 
 /// Spawns a thread for unpacking a snapshot
+fn spawn_unpack_snapshot_thread_one(
+    file_sender: Sender<PathBuf>,
+    account_paths: Arc<Vec<PathBuf>>,
+    ledger_dir: Arc<PathBuf>,
+    thread_index: usize,
+    snapshot_archive_path: &Path,
+    archive_format: ArchiveFormat,
+) -> JoinHandle<()> {
+    let snapshot_archive_path = snapshot_archive_path.to_owned();
+    Builder::new()
+        .name(format!("solUnpkSnpsht{thread_index:02}"))
+        .spawn(move || {
+            let reader = untar_snapshot_reader(&snapshot_archive_path, archive_format);
+            let mut archive = Archive::new(reader);
+            let parallel_selector = Some(ParallelSelector {
+                index: 0,
+                divisions: 1,
+            });
+
+            hardened_unpack::streaming_unpack_snapshot(
+                &mut archive,
+                ledger_dir.as_path(),
+                &account_paths,
+                parallel_selector,
+                &file_sender,
+            )
+            .unwrap();
+        })
+        .unwrap()
+}
+
+/// Spawns a thread for unpacking a snapshot
 fn spawn_unpack_snapshot_thread(
     file_sender: Sender<PathBuf>,
     account_paths: Arc<Vec<PathBuf>>,
@@ -1298,6 +1330,10 @@ fn spawn_unpack_snapshot_thread(
 }
 
 /// Streams unpacked files across channel
+///
+// Experiment: Use one thread to untar snapshot. This avoid multiple copies
+// incurred from background reader, and multiple reader clients scanning the
+// tarball for entries. However, we also lost the parallelism.
 fn streaming_unarchive_snapshot(
     file_sender: Sender<PathBuf>,
     account_paths: Vec<PathBuf>,
@@ -1305,39 +1341,18 @@ fn streaming_unarchive_snapshot(
     snapshot_archive_path: PathBuf,
     archive_format: ArchiveFormat,
     num_threads: usize,
-) -> Vec<JoinHandle<()>> {
+) -> JoinHandle<()> {
     let account_paths = Arc::new(account_paths);
     let ledger_dir = Arc::new(ledger_dir);
-    let shared_buffer = untar_snapshot_create_shared_buffer(&snapshot_archive_path, archive_format);
 
-    // All shared buffer readers need to be created before the threads are spawned
-    #[allow(clippy::needless_collect)]
-    let archives: Vec<_> = (0..num_threads)
-        .map(|_| {
-            let reader = SharedBufferReader::new(&shared_buffer);
-            Archive::new(reader)
-        })
-        .collect();
-
-    archives
-        .into_iter()
-        .enumerate()
-        .map(|(thread_index, archive)| {
-            let parallel_selector = Some(ParallelSelector {
-                index: thread_index,
-                divisions: num_threads,
-            });
-
-            spawn_unpack_snapshot_thread(
-                file_sender.clone(),
-                account_paths.clone(),
-                ledger_dir.clone(),
-                archive,
-                parallel_selector,
-                thread_index,
-            )
-        })
-        .collect()
+    spawn_unpack_snapshot_thread_one(
+        file_sender.clone(),
+        account_paths.clone(),
+        ledger_dir.clone(),
+        1,
+        &snapshot_archive_path,
+        archive_format,
+    )
 }
 
 /// BankSnapshotInfo::new_from_dir() requires a few meta files to accept a snapshot dir
@@ -1952,6 +1967,36 @@ fn unpack_snapshot_local(
     }
 
     Ok(unpacked_append_vec_map)
+}
+
+fn untar_snapshot_reader(snapshot_tar: &Path, archive_format: ArchiveFormat) -> Box<dyn Read> {
+    use memmap2::MmapOptions;
+    use std::slice;
+
+    let open_file = || {
+        fs::File::open(snapshot_tar)
+            .map_err(|err| {
+                IoError::other(format!(
+                    "failed to open snapshot archive '{}': {err}",
+                    snapshot_tar.display(),
+                ))
+            })
+            .unwrap()
+    };
+
+    // mmap the snapshot file for fast read
+    let mmap = unsafe { MmapOptions::new().map(&open_file()).unwrap() };
+    let len = mmap.len();
+    let ptr = &mmap[0] as *const u8;
+    let slice = unsafe { slice::from_raw_parts(ptr, len) };
+
+    match archive_format {
+        ArchiveFormat::TarBzip2 => Box::new(BzDecoder::new(slice)),
+        ArchiveFormat::TarGzip => Box::new(GzDecoder::new(slice)),
+        ArchiveFormat::TarZstd => Box::new(zstd::stream::read::Decoder::new(slice).unwrap()),
+        ArchiveFormat::TarLz4 => Box::new(lz4::Decoder::new(slice).unwrap()),
+        ArchiveFormat::Tar => Box::new(BufReader::new(slice)),
+    }
 }
 
 fn untar_snapshot_create_shared_buffer(
