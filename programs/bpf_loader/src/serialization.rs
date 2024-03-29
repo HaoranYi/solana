@@ -290,11 +290,14 @@ fn serialize_account_executable(
     account: &BorrowedAccount,
     feature_set: &FeatureSet,
 ) {
-    if feature_set.is_active(&bpf_serialize_account_executable_false::id()) {
-        s.write::<u8>(false as u8);
-    } else {
-        s.write::<u8>(account.is_executable() as u8);
-    }
+     //s.write::<u8>(false as u8);
+     //return; 
+     
+     if feature_set.is_active(&bpf_serialize_account_executable_false::id()) {
+         s.write::<u8>(false as u8);
+     } else {
+         s.write::<u8>(account.is_executable() as u8);
+     }
 }
 
 fn serialize_parameters_unaligned(
