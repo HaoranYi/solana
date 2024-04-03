@@ -36,6 +36,8 @@ struct ReadOnlyCacheStats {
     misses: AtomicU64,
     evicts: AtomicU64,
     load_us: AtomicU64,
+
+    pubkey_count: DashMap<Pubkey, u64>,
 }
 
 impl ReadOnlyCacheStats {
@@ -46,13 +48,52 @@ impl ReadOnlyCacheStats {
         self.load_us.store(0, Ordering::Relaxed);
     }
 
-    fn get_and_reset_stats(&self) -> (u64, u64, u64, u64) {
+    fn get_and_reset_stats(&self) -> (u64, u64, u64, u64, u64, u64) {
         let hits = self.hits.swap(0, Ordering::Relaxed);
         let misses = self.misses.swap(0, Ordering::Relaxed);
         let evicts = self.evicts.swap(0, Ordering::Relaxed);
         let load_us = self.load_us.swap(0, Ordering::Relaxed);
 
-        (hits, misses, evicts, load_us)
+        let (uniq_keys, max_dups) = self.pubkey_count_stat();
+
+        (hits, misses, evicts, load_us, uniq_keys, max_dups)
+    }
+
+    fn inc_pubkey_count(&self, key: &Pubkey) {
+        match self.pubkey_count.entry(*key) {
+            Entry::Vacant(entry) => {
+                entry.insert(1);
+            }
+            Entry::Occupied(mut entry) => {
+                let count = entry.get_mut();
+                *count += 1;
+            }
+        }
+    }
+
+    fn dec_pubkey_count(&self, key: &Pubkey) {
+        match self.pubkey_count.entry(*key) {
+            Entry::Vacant(_entry) => {}
+            Entry::Occupied(mut entry) => {
+                let count = entry.get_mut();
+                *count -= 1;
+                if *count <= 0 {
+                    entry.remove();
+                }
+            }
+        }
+    }
+
+    fn pubkey_count_stat(&self) -> (u64, u64) {
+        let mut count: u64 = 0;
+        let mut max: u64 = 0;
+
+        for x in self.pubkey_count.iter() {
+            count += 1;
+            max = max.max(*x);
+        }
+
+        (count, max)
     }
 }
 
@@ -148,6 +189,7 @@ impl ReadOnlyAccountsCache {
                 let mut queue = self.queue.lock().unwrap();
                 let index = queue.insert_last(key);
                 entry.insert(ReadOnlyAccountCacheEntry::new(account, index));
+                self.stats.inc_pubkey_count(&key.0);
             }
             Entry::Occupied(mut entry) => {
                 let entry = entry.get_mut();
@@ -190,6 +232,7 @@ impl ReadOnlyAccountsCache {
     }
 
     pub(crate) fn remove(&self, pubkey: Pubkey, slot: Slot) -> Option<AccountSharedData> {
+        self.stats.dec_pubkey_count(&pubkey);
         let (_, entry) = self.cache.remove(&(pubkey, slot))?;
         // self.queue should be modified only after removing the entry from the
         // cache, so that this is still safe if another thread writes to the
@@ -208,7 +251,7 @@ impl ReadOnlyAccountsCache {
         self.data_size.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn get_and_reset_stats(&self) -> (u64, u64, u64, u64) {
+    pub(crate) fn get_and_reset_stats(&self) -> (u64, u64, u64, u64, u64, u64) {
         self.stats.get_and_reset_stats()
     }
 }
