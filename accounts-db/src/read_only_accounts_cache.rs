@@ -3,6 +3,7 @@
 use {
     dashmap::{mapref::entry::Entry, DashMap},
     index_list::{Index, IndexList},
+    log::*,
     solana_measure::measure_us,
     solana_sdk::{
         account::{AccountSharedData, ReadableAccount},
@@ -37,7 +38,7 @@ struct ReadOnlyCacheStats {
     evicts: AtomicU64,
     load_us: AtomicU64,
 
-    pubkey_count: DashMap<Pubkey, u64>,
+    pubkey_count: DashMap<Pubkey, (u64 /*count */, u64 /*account_size */)>,
 }
 
 impl ReadOnlyCacheStats {
@@ -48,25 +49,28 @@ impl ReadOnlyCacheStats {
         self.load_us.store(0, Ordering::Relaxed);
     }
 
-    fn get_and_reset_stats(&self) -> (u64, u64, u64, u64, u64, u64) {
+    fn get_and_reset_stats(&self) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
         let hits = self.hits.swap(0, Ordering::Relaxed);
         let misses = self.misses.swap(0, Ordering::Relaxed);
         let evicts = self.evicts.swap(0, Ordering::Relaxed);
         let load_us = self.load_us.swap(0, Ordering::Relaxed);
 
-        let (uniq_keys, max_dups) = self.pubkey_count_stat();
+        let (uniq_keys, max_dups, dup_keys, dup_size) = self.pubkey_count_stat();
 
-        (hits, misses, evicts, load_us, uniq_keys, max_dups)
+        (
+            hits, misses, evicts, load_us, uniq_keys, max_dups, dup_keys, dup_size,
+        )
     }
 
-    fn inc_pubkey_count(&self, key: &Pubkey) {
+    fn inc_pubkey_count(&self, key: &Pubkey, account_size: u64) {
         match self.pubkey_count.entry(*key) {
             Entry::Vacant(entry) => {
-                entry.insert(1);
+                entry.insert((1, account_size));
             }
             Entry::Occupied(mut entry) => {
                 let count = entry.get_mut();
-                *count += 1;
+                count.0 += 1;
+                count.1 = account_size;
             }
         }
     }
@@ -76,24 +80,34 @@ impl ReadOnlyCacheStats {
             Entry::Vacant(_entry) => {}
             Entry::Occupied(mut entry) => {
                 let count = entry.get_mut();
-                *count -= 1;
-                if *count <= 0 {
+                count.0 -= 1;
+                if count.0 <= 0 {
                     entry.remove();
                 }
             }
         }
     }
 
-    fn pubkey_count_stat(&self) -> (u64, u64) {
+    /// Returns (count, max_dups, num_dup_keys, total_dup_size)
+    fn pubkey_count_stat(&self) -> (u64, u64, u64, u64) {
         let mut count: u64 = 0;
-        let mut max: u64 = 0;
+        let mut max_dups: u64 = 0;
+        let mut num_dup_keys: u64 = 0;
+        let mut dup_size: u64 = 0;
 
         for x in self.pubkey_count.iter() {
+            let key = x.key();
             count += 1;
-            max = max.max(*x);
+            max_dups = max_dups.max(x.0);
+            if x.0 > 1 {
+                num_dup_keys += 1;
+                dup_size = (x.0 - 1) * x.1;
+
+                info!("READONLY CACHE DUPS {} {} {}", key, x.0, x.1);
+            }
         }
 
-        (count, max)
+        (count, max_dups, num_dup_keys, dup_size)
     }
 }
 
@@ -189,7 +203,7 @@ impl ReadOnlyAccountsCache {
                 let mut queue = self.queue.lock().unwrap();
                 let index = queue.insert_last(key);
                 entry.insert(ReadOnlyAccountCacheEntry::new(account, index));
-                self.stats.inc_pubkey_count(&key.0);
+                self.stats.inc_pubkey_count(&key.0, account_size as u64);
             }
             Entry::Occupied(mut entry) => {
                 let entry = entry.get_mut();
@@ -251,7 +265,7 @@ impl ReadOnlyAccountsCache {
         self.data_size.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn get_and_reset_stats(&self) -> (u64, u64, u64, u64, u64, u64) {
+    pub(crate) fn get_and_reset_stats(&self) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
         self.stats.get_and_reset_stats()
     }
 }

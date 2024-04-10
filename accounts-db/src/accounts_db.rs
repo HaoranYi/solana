@@ -8265,6 +8265,8 @@ impl AccountsDb {
                 read_only_cache_load_us,
                 read_only_cache_uniq_keys,
                 read_only_cache_max_dups,
+                read_only_cache_num_dup_keys,
+                read_only_cache_dup_account_size,
             ) = self.read_only_accounts_cache.get_and_reset_stats();
             datapoint_info!(
                 "accounts_db_store_timings",
@@ -8328,6 +8330,16 @@ impl AccountsDb {
                 (
                     "read_only_accounts_cache_max_dups",
                     read_only_cache_max_dups,
+                    i64
+                ),
+                (
+                    "read_only_accounts_cache_num_dup_keys",
+                    read_only_cache_num_dup_keys,
+                    i64
+                ),
+                (
+                    "read_only_accounts_cache_dup_account_size",
+                    read_only_cache_dup_account_size,
                     i64
                 ),
                 ("read_only_accounts_cache_hits", read_only_cache_hits, i64),
