@@ -101,7 +101,7 @@ impl ReadOnlyCacheStats {
             max_dups = max_dups.max(x.0);
             if x.0 > 1 {
                 num_dup_keys += 1;
-                dup_size = (x.0 - 1) * x.1;
+                dup_size += (x.0 - 1) * x.1;
 
                 info!("READONLY CACHE DUPS {} {} {}", key, x.0, x.1);
             }
