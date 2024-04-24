@@ -6718,8 +6718,13 @@ impl Bank {
         reload: bool,
         effective_epoch: Epoch,
     ) -> Option<Arc<ProgramCacheEntry>> {
-        self.transaction_processor
-            .load_program_with_pubkey(self, pubkey, reload, effective_epoch)
+        self.transaction_processor.load_program_with_pubkey(
+            self,
+            pubkey,
+            reload,
+            effective_epoch,
+            &HashMap::default(),
+        )
     }
 
     pub fn fee_structure(&self) -> &FeeStructure {
@@ -6743,6 +6748,17 @@ impl TransactionProcessingCallback for Bank {
             .accounts_db
             .account_matches_owners(&self.ancestors, account, owners)
             .ok()
+    }
+
+    fn load_account_with(
+        &self,
+        pubkey: &Pubkey,
+        callback: impl for<'a> Fn(&'a AccountSharedData) -> bool,
+    ) -> Option<(AccountSharedData, Slot)> {
+        self.rc
+            .accounts
+            .accounts_db
+            .load_account_with(&self.ancestors, pubkey, callback)
     }
 
     fn get_account_shared_data(&self, pubkey: &Pubkey) -> Option<AccountSharedData> {
