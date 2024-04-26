@@ -92,7 +92,6 @@ use {
         transaction::SanitizedTransaction,
     },
     std::{
-        borrow::Cow,
         boxed::Box,
         collections::{hash_map, BTreeSet, HashMap, HashSet},
         fs,
@@ -841,15 +840,15 @@ pub enum LoadHint {
 }
 
 #[derive(Debug)]
-pub enum LoadedAccountAccessor<'a> {
+pub enum LoadedAccountAccessor {
     // StoredAccountMeta can't be held directly here due to its lifetime dependency to
     // AccountStorageEntry
     Stored(Option<(Arc<AccountStorageEntry>, usize)>),
     // None value in Cached variant means the cache was flushed
-    Cached(Option<Cow<'a, CachedAccount>>),
+    Cached(Option<CachedAccount>),
 }
 
-impl<'a> LoadedAccountAccessor<'a> {
+impl LoadedAccountAccessor {
     fn check_and_get_loaded_account_shared_data(&mut self) -> AccountSharedData {
         // all of these following .expect() and .unwrap() are like serious logic errors,
         // ideal for representing this as rust type system....
@@ -897,13 +896,10 @@ impl<'a> LoadedAccountAccessor<'a> {
         }
     }
 
-    fn get_loaded_account<T>(
-        &mut self,
-        mut callback: impl for<'local> FnMut(LoadedAccount<'local>) -> T,
-    ) -> Option<T> {
+    fn get_loaded_account<T>(&mut self, mut callback: impl FnMut(LoadedAccount) -> T) -> Option<T> {
         match self {
             LoadedAccountAccessor::Cached(cached_account) => {
-                let cached_account: Cow<'a, CachedAccount> = cached_account.take().expect(
+                let cached_account = cached_account.take().expect(
                     "Cache flushed/purged should be handled before trying to fetch account",
                 );
                 Some(callback(LoadedAccount::Cached(cached_account)))
@@ -958,7 +954,7 @@ impl<'a> LoadedAccountAccessor<'a> {
 
 pub enum LoadedAccount<'a> {
     Stored(StoredAccountMeta<'a>),
-    Cached(Cow<'a, CachedAccount>),
+    Cached(CachedAccount),
 }
 
 impl<'a> LoadedAccount<'a> {
@@ -981,10 +977,7 @@ impl<'a> LoadedAccount<'a> {
             LoadedAccount::Stored(stored_account_meta) => {
                 stored_account_meta.to_account_shared_data()
             }
-            LoadedAccount::Cached(cached_account) => match cached_account {
-                Cow::Owned(cached_account) => cached_account.account.clone(),
-                Cow::Borrowed(cached_account) => cached_account.account.clone(),
-            },
+            LoadedAccount::Cached(cached_account) => cached_account.account.clone(),
         }
     }
 
@@ -4933,9 +4926,8 @@ impl AccountsDb {
                     slot_cache
                         .par_iter()
                         .filter_map(|cached_account| {
-                            cache_map_func(&LoadedAccount::Cached(Cow::Borrowed(
-                                cached_account.value(),
-                            )))
+                            // Cost of a Arc::clone? already cloned the top level slot_cache, so we can avoid clone here.
+                            cache_map_func(&LoadedAccount::Cached(cached_account.value().clone()))
                         })
                         .collect()
                 }))
@@ -4944,9 +4936,7 @@ impl AccountsDb {
                     slot_cache
                         .iter()
                         .filter_map(|cached_account| {
-                            cache_map_func(&LoadedAccount::Cached(Cow::Borrowed(
-                                cached_account.value(),
-                            )))
+                            cache_map_func(&LoadedAccount::Cached(cached_account.value().clone()))
                         })
                         .collect(),
                 )
@@ -5073,7 +5063,7 @@ impl AccountsDb {
         pubkey: &'a Pubkey,
         max_root: Option<Slot>,
         clone_in_lock: bool,
-    ) -> Option<(Slot, StorageLocation, Option<LoadedAccountAccessor<'a>>)> {
+    ) -> Option<(Slot, StorageLocation, Option<LoadedAccountAccessor>)> {
         self.accounts_index.get_with_and_then(
             pubkey,
             Some(ancestors),
@@ -5096,7 +5086,7 @@ impl AccountsDb {
         pubkey: &'a Pubkey,
         max_root: Option<Slot>,
         load_hint: LoadHint,
-    ) -> Option<(LoadedAccountAccessor<'a>, Slot)> {
+    ) -> Option<(LoadedAccountAccessor, Slot)> {
         // Happy drawing time! :)
         //
         // Reader                               | Accessed data source for cached/stored
@@ -5493,15 +5483,15 @@ impl AccountsDb {
             .check_and_get_loaded_account(|loaded_account| Some(loaded_account.loaded_hash()))
     }
 
-    fn get_account_accessor<'a>(
-        &'a self,
+    fn get_account_accessor(
+        &self,
         slot: Slot,
-        pubkey: &'a Pubkey,
+        pubkey: &Pubkey,
         storage_location: &StorageLocation,
-    ) -> LoadedAccountAccessor<'a> {
+    ) -> LoadedAccountAccessor {
         match storage_location {
             StorageLocation::Cached => {
-                let maybe_cached_account = self.accounts_cache.load(slot, pubkey).map(Cow::Owned);
+                let maybe_cached_account = self.accounts_cache.load(slot, pubkey);
                 LoadedAccountAccessor::Cached(maybe_cached_account)
             }
             StorageLocation::AppendVec(store_id, offset) => {
