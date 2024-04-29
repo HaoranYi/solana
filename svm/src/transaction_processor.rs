@@ -647,7 +647,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                 // Load, verify and compile one program.
                 let program = self
                     .load_program_with_pubkey(callback, &key, false, self.epoch, accounts_map)
-                    .expect("called load_program_with_pubkey() with nonexistent account");
+                    .expect(&format!("called load_program_with_pubkey() with nonexistent account -- {:?}", &key));
                 program.tx_usage_counter.store(count, Ordering::Relaxed);
                 program_to_store = Some((key, program));
             } else if missing_programs.is_empty() {
