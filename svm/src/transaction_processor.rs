@@ -494,6 +494,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                     }
                     None => {
                         missing_programs.retain(|x| x.0 != key);
+                        log::info!("haoran skip {}, not found", key);
                         continue;
                     }
                 }
