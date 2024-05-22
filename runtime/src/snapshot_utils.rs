@@ -753,6 +753,8 @@ pub fn archive_snapshot_package(
 
     fs::create_dir_all(tar_dir).map_err(|err| E::CreateArchiveDir(err, tar_dir.to_path_buf()))?;
 
+    println!("{:?}", tar_dir);
+
     // Create the staging directories
     let staging_dir_prefix = TMP_SNAPSHOT_ARCHIVE_PREFIX;
     let staging_dir = tempfile::Builder::new()
@@ -771,6 +773,8 @@ pub fn archive_snapshot_package(
     fs::create_dir_all(&staging_snapshot_dir)
         .map_err(|err| E::CreateSnapshotStagingDir(err, staging_snapshot_dir.clone()))?;
 
+    println!("{:?}", staging_snapshot_dir);
+
     let src_snapshot_dir = &snapshot_package.bank_snapshot_dir;
     // To be a source for symlinking and archiving, the path need to be an absolute path
     let src_snapshot_dir = src_snapshot_dir
@@ -778,19 +782,23 @@ pub fn archive_snapshot_package(
         .map_err(|err| E::CanonicalizeSnapshotSourceDir(err, src_snapshot_dir.clone()))?;
     let staging_snapshot_file = staging_snapshot_dir.join(&slot_str);
     let src_snapshot_file = src_snapshot_dir.join(slot_str);
+    println!("ln {:?} {:?}", &src_snapshot_file, &staging_snapshot_file);
     symlink::symlink_file(&src_snapshot_file, &staging_snapshot_file)
         .map_err(|err| E::SymlinkSnapshot(err, src_snapshot_file, staging_snapshot_file))?;
 
     // Following the existing archive format, the status cache is under snapshots/, not under <slot>/
     // like in the snapshot dir.
     let staging_status_cache = staging_snapshots_dir.join(SNAPSHOT_STATUS_CACHE_FILENAME);
+
     let src_status_cache = src_snapshot_dir.join(SNAPSHOT_STATUS_CACHE_FILENAME);
+    println!("ln {:?} {:?}", &src_status_cache, &staging_status_cache);
     symlink::symlink_file(&src_status_cache, &staging_status_cache)
         .map_err(|err| E::SymlinkStatusCache(err, src_status_cache, staging_status_cache))?;
 
     // The bank snapshot has the version file, so symlink it to the correct staging path
     let staging_version_file = staging_dir.path().join(SNAPSHOT_VERSION_FILENAME);
     let src_version_file = src_snapshot_dir.join(SNAPSHOT_VERSION_FILENAME);
+    println!("ln {:?} {:?}", &src_version_file, &staging_version_file);
     symlink::symlink_file(&src_version_file, &staging_version_file).map_err(|err| {
         E::SymlinkVersionFile(err, src_version_file, staging_version_file.clone())
     })?;
@@ -807,6 +815,8 @@ pub fn archive_snapshot_package(
         let mut archive_file = fs::File::create(&archive_path)
             .map_err(|err| E::CreateArchiveFile(err, archive_path.clone()))?;
 
+        println!("archive file {:?}", archive_path);
+
         let do_archive_files = |encoder: &mut dyn Write| -> std::result::Result<(), E> {
             let mut archive = tar::Builder::new(encoder);
             // Serialize the version and snapshots files before accounts so we can quickly determine the version
@@ -814,9 +824,16 @@ pub fn archive_snapshot_package(
             archive
                 .append_path_with_name(&staging_version_file, SNAPSHOT_VERSION_FILENAME)
                 .map_err(E::ArchiveVersionFile)?;
+
+            println!(
+                "add {:?} {:?}",
+                staging_version_file, SNAPSHOT_VERSION_FILENAME
+            );
             archive
                 .append_dir_all(SNAPSHOTS_DIR, &staging_snapshots_dir)
                 .map_err(E::ArchiveSnapshotsDir)?;
+
+            println!("add {:?} {:?}", staging_snapshots_dir, SNAPSHOTS_DIR);
 
             let mut mmap_size = 0;
             let mut file_size = 0;
@@ -843,6 +860,8 @@ pub fn archive_snapshot_package(
                 mmap_size += m;
                 file_size += f.1;
                 info!("haoran snap_acc_size {:?} {} {} {}", path, m, f.0, f.1);
+
+                println!("adding {:?} {:?}", path, path_in_archive);
 
                 match storage.accounts.internals_for_archive() {
                     InternalsForArchive::Mmap(data) => {
@@ -904,6 +923,9 @@ pub fn archive_snapshot_package(
     // Atomically move the archive into position for other validators to find
     let metadata = fs::metadata(&archive_path)
         .map_err(|err| E::QueryArchiveMetadata(err, archive_path.clone()))?;
+
+    println!("rename {:?} {:?}", &archive_path, snapshot_package.path());
+
     fs::rename(&archive_path, snapshot_package.path())
         .map_err(|err| E::MoveArchive(err, archive_path, snapshot_package.path().clone()))?;
 
