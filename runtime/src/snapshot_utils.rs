@@ -818,11 +818,32 @@ pub fn archive_snapshot_package(
                 .append_dir_all(SNAPSHOTS_DIR, &staging_snapshots_dir)
                 .map_err(E::ArchiveSnapshotsDir)?;
 
+            let mut mmap_size = 0;
+            let mut file_size = 0;
+            use std::io::SeekFrom;
+
+            let get_file_size = |path| {
+                let r = &mut fs::File::open(path).unwrap();
+                let l1 = r.metadata().unwrap().len();
+                let l2 = r.seek(SeekFrom::End(0)).unwrap();
+                return (l1, l2);
+            };
+
             for storage in &snapshot_package.snapshot_storages {
                 let path_in_archive = Path::new(ACCOUNTS_DIR).join(AccountsFile::file_name(
                     storage.slot(),
                     storage.append_vec_id(),
                 ));
+
+                let path = storage.path();
+
+                let m = storage.accounts.mmap_size();
+                let f = get_file_size(path);
+
+                mmap_size += m;
+                file_size += f.1;
+                info!("haoran snap_acc_size {:?} {} {} {}", path, m, f.0, f.1);
+
                 match storage.accounts.internals_for_archive() {
                     InternalsForArchive::Mmap(data) => {
                         let mut header = tar::Header::new_gnu();
@@ -839,6 +860,8 @@ pub fn archive_snapshot_package(
                 }
                 .map_err(|err| E::ArchiveAccountStorageFile(err, storage.path().to_path_buf()))?;
             }
+
+            info!("haoran total mmap {} file {}", mmap_size, file_size);
 
             archive.into_inner().map_err(E::FinishArchive)?;
             Ok(())

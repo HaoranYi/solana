@@ -307,6 +307,13 @@ impl AccountsFile {
             InternalsForArchive::FileIo(self.path())
         }
     }
+
+    pub fn mmap_size(&self) -> u64 {
+        match self {
+            Self::AppendVec(av) => av.data_for_archive().len() as u64,
+            Self::TieredStorage(ts) => 0,
+        }
+    }
 }
 
 /// An enum that creates AccountsFile instance with the specified format.
