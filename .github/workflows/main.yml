@@ -1,0 +1,34 @@
+name: "rebase master"
+
+on:
+#  workflow_dispatch
+  schedule:
+    - cron: "30 6 * * 1-5" 
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - branch: master
+            rebase: upstream/master
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}      
+      - name: Add upstream
+        run: git remote add upstream https://github.com/anza-xyz/agave.git
+      - name: Fetch upstream
+        run: git fetch upstream
+      - name: Fetch origin
+        run: git fetch origin
+      - name: Setup email
+        run: |
+          git config --global user.email "job@job"
+          git config --global user.name "nightly rebase" 
+      - name: rebase
+        run: git rebase ${{ matrix.rebase }}
+      - name: push
+        run: git push -f
