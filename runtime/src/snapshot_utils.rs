@@ -803,7 +803,13 @@ pub fn archive_snapshot_package(
                 .append_dir_all(SNAPSHOTS_DIR, &staging_snapshots_dir)
                 .map_err(E::ArchiveSnapshotsDir)?;
 
-            for storage in &snapshot_package.snapshot_storages {
+            let mut storages: Vec<_> = snapshot_package.snapshot_storages.iter().cloned().collect();
+            use rand::seq::SliceRandom;
+            use rand::thread_rng;
+            let mut rng = thread_rng();
+            storages.shuffle(&mut rng);
+
+            for storage in storages {
                 let path_in_archive = Path::new(ACCOUNTS_DIR).join(AccountsFile::file_name(
                     storage.slot(),
                     storage.append_vec_id(),
