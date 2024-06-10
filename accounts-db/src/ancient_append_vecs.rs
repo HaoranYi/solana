@@ -223,7 +223,6 @@ impl AncientSlotInfos {
             let ancient_storages_required =
                 div_ceil(cumulative_bytes.0, tuning.ideal_storage_size) as usize;
             let storages_remaining = total_storages - i - 1;
-
             // if the remaining uncombined storages and the # of resulting
             // combined ancient storages are less than the threshold, then
             // we've gone too far, so get rid of this entry and all after it.
@@ -277,6 +276,7 @@ impl AncientSlotInfos {
             // currently fewer storages than max, so nothing to shrink
             self.shrink_indexes.clear();
             self.all_infos.clear();
+            log::error!("ancient_append_vecs_packed: {}, all filtered out", line!());
             return;
         }
 
@@ -330,7 +330,7 @@ impl AccountsDb {
     ) {
         let tuning = PackedAncientStorageTuning {
             // only allow 10k slots old enough to be ancient
-            max_ancient_slots: 10_000,
+            max_ancient_slots: 2_000,
             // re-combine/shrink 55% of the data savings this pass
             percent_of_alive_shrunk_data: 55,
             ideal_storage_size: NonZeroU64::new(get_ancient_append_vec_capacity()).unwrap(),
@@ -396,15 +396,27 @@ impl AccountsDb {
         self.shrink_ancient_stats
             .slots_considered
             .fetch_add(sorted_slots.len() as u64, Ordering::Relaxed);
+        let slots = self.shrink_candidate_slots.lock().unwrap();
+        log::error!("ancient_append_vecs_packed: {}, # dirty stores: {}, # of these ancient in dirty stores: {}, shrinks in progress: {}, # shrink candidates: {}, # of these ancient in shrink candidates: {}", line!(), self.dirty_stores.len(), sorted_slots.iter().filter_map(|slot| self.dirty_stores.contains_key(slot).then_some(())).count(),
+        self
+        .storage
+        .shrink_in_progress_map.len(),
+            slots.len(),
+            sorted_slots.iter().filter_map(|slot| slots.contains(slot).then_some(())).count()
+    );
+        drop(slots);
+
         let ancient_slot_infos = self.collect_sort_filter_ancient_slots(sorted_slots, &tuning);
 
         if ancient_slot_infos.all_infos.is_empty() {
+            log::error!("ancient_append_vecs_packed: {}, nothing to do", line!());
             return; // nothing to do
         }
         let mut accounts_per_storage = self
             .get_unique_accounts_from_storage_for_combining_ancient_slots(
                 &ancient_slot_infos.all_infos[..],
             );
+        log::error!("ancient_append_vecs_packed: {} after get_unique_accounts_from_storage_for_combining_ancient_slots", line!());
 
         let mut accounts_to_combine = self.calc_accounts_to_combine(
             &mut accounts_per_storage,
@@ -412,7 +424,6 @@ impl AccountsDb {
             IncludeManyRefSlots::Skip,
         );
         metrics.unpackable_slots_count += accounts_to_combine.unpackable_slots_count;
-
         let mut many_refs_newest = accounts_to_combine
             .accounts_to_combine
             .iter_mut()
@@ -463,11 +474,13 @@ impl AccountsDb {
             ),
             tuning.ideal_storage_size,
         );
+        log::error!("ancient_append_vecs_packed: {}, after pack", line!());
 
         if pack.len() > accounts_to_combine.target_slots_sorted.len() {
             // Not enough slots to contain the accounts we are trying to pack.
             return;
         }
+        log::error!("ancient_append_vecs_packed: {}, enough slots", line!());
 
         accounts_to_combine
             .accounts_to_combine
@@ -486,6 +499,7 @@ impl AccountsDb {
             write_ancient_accounts,
             metrics,
         );
+        log::error!("ancient_append_vecs_packed: {}", line!());
     }
 
     /// calculate all storage info for the storages in slots
@@ -552,6 +566,12 @@ impl AccountsDb {
         let high_slot_boundary = max_slot.saturating_sub(HIGH_SLOT_OFFSET);
         let is_high_slot = |slot| slot >= high_slot_boundary;
 
+        log::error!(
+            "ancient_append_vecs_packed: {}, adding: {}",
+            line!(),
+            slots.len()
+        );
+        let mut too_big = 0;
         for slot in &slots {
             if let Some(storage) = self.storage.get_slot_storage_entry(*slot) {
                 if infos.add(
@@ -565,6 +585,11 @@ impl AccountsDb {
                 }
             }
         }
+        log::error!(
+            "ancient_append_vecs_packed: {}, too big: {}",
+            line!(),
+            too_big
+        );
         let mut total_dead_bytes = 0;
         let mut total_alive_bytes = 0;
         let should_shrink_count = infos
@@ -681,6 +706,12 @@ impl AccountsDb {
         metrics: &mut ShrinkStatsSub,
     ) {
         let mut dropped_roots = Vec::with_capacity(accounts_to_combine.accounts_to_combine.len());
+        log::error!(
+            "ancient_append_vecs_packed: {}, finish_combine: {}, shrinks in progress: {}",
+            line!(),
+            accounts_to_combine.accounts_to_combine.len(),
+            self.storage.shrink_in_progress_map.len()
+        );
         for shrink_collect in accounts_to_combine.accounts_to_combine {
             let slot = shrink_collect.slot;
 
@@ -688,6 +719,11 @@ impl AccountsDb {
 
             let mut reopen = false;
             if shrink_in_progress.is_none() {
+                log::error!(
+                    "ancient_append_vecs_packed: {}, no shrink in progress, slot: {}",
+                    line!(),
+                    slot
+                );
                 dropped_roots.push(slot);
             } else {
                 // Remember that we need to 'reopen' the storage for this
@@ -1155,6 +1191,7 @@ pub const fn get_ancient_append_vec_capacity() -> u64 {
 
     RESULT
 }
+
 
 /// is this a max-size append vec designed to be used as an ancient append vec?
 pub fn is_ancient(storage: &AccountsFile) -> bool {
