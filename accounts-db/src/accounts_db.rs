@@ -2329,6 +2329,10 @@ impl<'a> AppendVecScan for ScanState<'a> {
         self.pubkey_to_bin_index -= self.bin_range.start;
 
         let balance = loaded_account.lamports();
+        if *pubkey == Pubkey::default() && balance == 0 {
+            panic!("haoran: found all zeroed account in hash scan!!!");
+        }
+
         let mut loaded_hash = loaded_account.loaded_hash();
 
         let hash_is_missing = loaded_hash == AccountHash(Hash::default());
