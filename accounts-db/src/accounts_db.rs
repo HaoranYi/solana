@@ -7169,6 +7169,8 @@ impl AccountsDb {
                                 }
                                 scanner.set_slot(slot);
 
+                                info!("haoran scanning slot {}", slot);
+
                                 Self::scan_single_account_storage(storage, &mut scanner);
                             });
                             if ancient {
