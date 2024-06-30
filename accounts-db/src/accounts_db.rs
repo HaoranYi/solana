@@ -18009,11 +18009,12 @@ pub mod tests {
         let mut seen = HashSet::new();
 
         let mut i: u64 = 0;
-        let mut v = vec![0_u64; 64];
+        let mut v = vec![0_u64; 2500];
         loop {
             let mut hasher = hash_map::DefaultHasher::new();
-            for j in 0..64 {
-                v[j] = (i >> j) & 0x1;
+            for j in 0..2500 {
+                let offset = j % 64;
+                v[j] = (i >> offset) & 0x1;
             }
 
             v.hash(&mut hasher);
