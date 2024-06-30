@@ -18036,6 +18036,6 @@ pub mod tests {
             // }
         }
 
-        println!("found collison {i}");
+        println!("found collision {i}");
     }
 }
