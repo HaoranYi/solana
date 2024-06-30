@@ -18003,4 +18003,38 @@ pub mod tests {
         let hashes = hashes.into_iter().collect();
         AccountsHasher::compute_merkle_root_recurse(hashes, MERKLE_FANOUT)
     }
+
+    #[test]
+    fn test_sim_hash_collision() {
+        let mut seen = HashSet::new();
+
+        let mut i: u64 = 0;
+        let mut v = vec![0_u64; 64];
+        loop {
+            let mut hasher = hash_map::DefaultHasher::new();
+            for j in 0..64 {
+                v[j] = (i >> j) & 0x1;
+            }
+
+            v.hash(&mut hasher);
+            let r = hasher.finish();
+            if seen.contains(&r) {
+                break;
+            }
+            // println!("{:?}, {:x}", v, r);
+            seen.insert(r);
+
+            i = i + 1;
+
+            if i % 1000 == 0 {
+                println!("iter  {}", i);
+            }
+
+            // if i > 10 * 1000 {
+            //     break;
+            // }
+        }
+
+        println!("found collison {i}");
+    }
 }
