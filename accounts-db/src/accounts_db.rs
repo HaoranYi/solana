@@ -54,7 +54,10 @@ use {
         ancient_append_vecs::{
             get_ancient_append_vec_capacity, is_ancient, AccountsToStore, StorageSelector,
         },
-        append_vec::{aligned_stored_size, APPEND_VEC_MMAPPED_FILES_OPEN, APPEND_VEC_MMAPPED_FILES_OPENED,APPEND_VEC_MMAPPED_FILES_CLOSED, STORE_META_OVERHEAD},
+        append_vec::{
+            aligned_stored_size, APPEND_VEC_MMAPPED_FILES_CLOSED, APPEND_VEC_MMAPPED_FILES_OPEN,
+            APPEND_VEC_MMAPPED_FILES_OPENED, STORE_META_OVERHEAD,
+        },
         cache_hash_data::{
             CacheHashData, CacheHashDataFileReference, DeletionPolicy as CacheHashDeletionPolicy,
         },
@@ -589,7 +592,6 @@ pub struct AccountsAddRootTiming {
 }
 
 const ANCIENT_APPEND_VEC_DEFAULT_OFFSET: Option<i64> = Some(425_000);
-
 
 #[derive(Debug, Default, Clone)]
 pub struct AccountsDbConfig {
@@ -1354,7 +1356,7 @@ type AccountInfoAccountsIndex = AccountsIndex<AccountInfo, AccountInfo>;
 // This structure handles the load/store of the accounts
 #[derive(Debug)]
 pub struct AccountsDb {
-    pub dummies: DashMap<Pubkey, Vec<Pubkey>>,    
+    pub dummies: DashMap<Pubkey, Vec<Pubkey>>,
     /// Keeps tracks of index into AppendVec on a per slot basis
     pub accounts_index: AccountInfoAccountsIndex,
 
@@ -1638,10 +1640,10 @@ impl PurgeStats {
                     self.num_keys_removed_from_index.swap(0, Ordering::Relaxed) as i64,
                     i64
                 ),
-
                 (
                     "remove_dead_slots_metadata_us",
-                    self.remove_dead_slots_metadata_us.swap(0, Ordering::Relaxed) as i64,
+                    self.remove_dead_slots_metadata_us
+                        .swap(0, Ordering::Relaxed) as i64,
                     i64
                 ),
             );
@@ -2969,7 +2971,10 @@ impl AccountsDb {
 
     fn max_clean_root(&self, proposed_clean_root: Option<Slot>) -> Option<Slot> {
         if self.accounts_index.min_ongoing_scan_root().is_some() {
-            log::error!("max_clean_root is: {:?}", self.accounts_index.min_ongoing_scan_root());
+            log::error!(
+                "max_clean_root is: {:?}",
+                self.accounts_index.min_ongoing_scan_root()
+            );
         }
         match (
             self.accounts_index.min_ongoing_scan_root(),
@@ -3074,16 +3079,21 @@ impl AccountsDb {
         let mut min_dirty_slot = None::<u64>;
         let previous_len = self.dirty_stores.len();
         let (_, us) = measure_us!({
-        self.dirty_stores.retain(|slot, store| {
-            if *slot > max_slot_inclusive {
-                true
-            } else {
-                min_dirty_slot = min_dirty_slot.map(|min| min.min(*slot)).or(Some(*slot));
-                dirty_stores.push((*slot, store.clone()));
-                false
-            }
-        });});
-        error!("jwash: construct_candidate_clean_keys: dirty stores: {}, prev len: {}, us: {us}", dirty_stores.len(), previous_len);
+            self.dirty_stores.retain(|slot, store| {
+                if *slot > max_slot_inclusive {
+                    true
+                } else {
+                    min_dirty_slot = min_dirty_slot.map(|min| min.min(*slot)).or(Some(*slot));
+                    dirty_stores.push((*slot, store.clone()));
+                    false
+                }
+            });
+        });
+        error!(
+            "jwash: construct_candidate_clean_keys: dirty stores: {}, prev len: {}, us: {us}",
+            dirty_stores.len(),
+            previous_len
+        );
         let dirty_stores_len = dirty_stores.len();
         let pubkeys = DashSet::new();
         let dirty_ancient_stores = AtomicUsize::default();
@@ -3111,14 +3121,15 @@ impl AccountsDb {
                 .unwrap_or(&max_slot_inclusive.saturating_add(1));
         };
         let (_, us) = measure_us!({
-        if is_startup {
-            // Free to consume all the cores during startup
-            dirty_store_routine();
-        } else {
-            self.thread_pool_clean.install(|| {
+            if is_startup {
+                // Free to consume all the cores during startup
                 dirty_store_routine();
-            });
-        }});
+            } else {
+                self.thread_pool_clean.install(|| {
+                    dirty_store_routine();
+                });
+            }
+        });
 
         error!(
             "jwash: dirty_stores.len: {} pubkeys.len: {}, us: {}, startup: {}",
@@ -3180,9 +3191,20 @@ impl AccountsDb {
     pub fn maybe_throttle_add(&self) {
         let now = solana_sdk::timing::timestamp();
         loop {
-            let accounts = self.accounts_index.account_maps.first().unwrap().stats().count_in_mem.load(Ordering::Relaxed);
-            if accounts > 100_000_000 || self
-            .epoch_accounts_hash_manager.waiting.load(Ordering::Relaxed) {
+            let accounts = self
+                .accounts_index
+                .account_maps
+                .first()
+                .unwrap()
+                .stats()
+                .count_in_mem
+                .load(Ordering::Relaxed);
+            if accounts > 100_000_000
+                || self
+                    .epoch_accounts_hash_manager
+                    .waiting
+                    .load(Ordering::Relaxed)
+            {
                 sleep(Duration::from_millis(10));
                 if accounts > 200_000_000 {
                     // stall while we are bigger than 200M accounts here
@@ -3440,7 +3462,7 @@ impl AccountsDb {
                 epoch_schedule,
             );
 
-            log::error!("clean_accounts: {}", line!());
+        log::error!("clean_accounts: {}", line!());
         self.do_reset_uncleaned_roots(max_clean_root_inclusive);
         clean_old_rooted.stop();
 
@@ -3913,7 +3935,7 @@ impl AccountsDb {
                 result
             },
             None,
-            false,//true,
+            false, //true,
         );
         // assert_eq!(index, std::cmp::min(accounts.len(), count));
         stats.alive_accounts.fetch_add(alive, Ordering::Relaxed);
@@ -6043,8 +6065,11 @@ impl AccountsDb {
             .get_slot_storage_entry_shrinking_in_progress_ok(purged_slot)
             .is_none());
         let num_purged_keys = pubkey_to_slot_set.len();
-        let ((reclaims, _), purge_keys_us) = measure_us!(self.purge_keys_exact(pubkey_to_slot_set.iter()));
-        self.external_purge_slots_stats.purge_keys_exact_us.fetch_add(purge_keys_us, Ordering::Relaxed);
+        let ((reclaims, _), purge_keys_us) =
+            measure_us!(self.purge_keys_exact(pubkey_to_slot_set.iter()));
+        self.external_purge_slots_stats
+            .purge_keys_exact_us
+            .fetch_add(purge_keys_us, Ordering::Relaxed);
         assert_eq!(reclaims.len(), num_purged_keys);
         if is_dead {
             let (_, us) = measure_us!(self.remove_dead_slots_metadata(
@@ -6053,7 +6078,9 @@ impl AccountsDb {
                 None,
                 pubkeys_removed_from_accounts_index,
             ));
-            self.external_purge_slots_stats.remove_dead_slots_metadata_us.fetch_add(us, Ordering::Relaxed);
+            self.external_purge_slots_stats
+                .remove_dead_slots_metadata_us
+                .fetch_add(us, Ordering::Relaxed);
         }
     }
 
@@ -6525,22 +6552,10 @@ impl AccountsDb {
         if requested_flush_root.is_some() {
             datapoint_info!(
                 "force_flush",
-                (
-                    "requested_flush_root",
-                    requested_flush_root.unwrap(),
-                    i64
-                ),
+                ("requested_flush_root", requested_flush_root.unwrap(), i64),
             );
-        }
-        else {
-            datapoint_info!(
-                "force_flush",
-                (
-                    "requested_flush_root_none",
-                    1,
-                    i64
-                ),
-            );
+        } else {
+            datapoint_info!("force_flush", ("requested_flush_root_none", 1, i64),);
         }
 
         // Always flush up to `requested_flush_root`, which is necessary for things like snapshotting.
@@ -8378,7 +8393,8 @@ impl AccountsDb {
         if self.log_dead_slots.load(Ordering::Relaxed) {
             info!(
                 "remove_dead_slots_metadata: {} dead slots, first: {:?}",
-                dead_slots.len(), dead_slots.first()
+                dead_slots.len(),
+                dead_slots.first()
             );
             trace!("remove_dead_slots_metadata: dead_slots: {:?}", dead_slots);
         }
