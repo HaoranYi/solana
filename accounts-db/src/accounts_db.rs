@@ -8761,7 +8761,14 @@ impl AccountsDb {
                 }
             });
             if let Some(to_log) = to_log {
-                log::error!("haoran accounts-db store {:?}", to_log);
+                let source_slot = accounts.slot(index);
+                let target_slot = accounts.target_slot();
+                log::error!(
+                    "haoran accounts-db store {:?} {} -> {}",
+                    to_log,
+                    source_slot,
+                    target_slot
+                );
             }
         }
 
