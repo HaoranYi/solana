@@ -2375,20 +2375,26 @@ impl<'a> AppendVecScan for ScanState<'a> {
         self.pubkey_to_bin_index -= self.bin_range.start;
 
         let balance = loaded_account.lamports();
-        let mut account_hash = loaded_account.loaded_hash();
 
-        let hash_is_missing = account_hash == AccountHash(Hash::default());
-        if hash_is_missing {
-            let computed_hash = AccountsDb::hash_account_data(
-                loaded_account.lamports(),
-                loaded_account.owner(),
-                loaded_account.executable(),
-                loaded_account.rent_epoch(),
-                loaded_account.data(),
-                loaded_account.pubkey(),
-            );
-            account_hash = computed_hash;
-        }
+        // For pop sim, we must recompute the hash. We skip rewrites. Therefore,
+        // we have left-over accounts in the append-vec that use old version of
+        // account-hash calculation. When we pack, we will recompute a different
+        // hash. Because pack schedule can be different on different machine,
+        // which means the hash for these accounts will be updated at different
+        // schedule. Then, when we calculate EAH, even though the accounts
+        // content are the same, the hashes will be different on, whether we
+        // load from append-vec - which contains old hash, or a newly computed
+        // hash after pack. Therefore, we should always recompute the hash here
+        // for not breaking the consensus!
+        let account_hash = AccountsDb::hash_account_data(
+            loaded_account.lamports(),
+            loaded_account.owner(),
+            loaded_account.executable(),
+            loaded_account.rent_epoch(),
+            loaded_account.data(),
+            loaded_account.pubkey(),
+        );
+
         let source_item = CalculateHashIntermediate {
             hash: account_hash,
             lamports: balance,
