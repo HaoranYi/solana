@@ -8738,6 +8738,33 @@ impl AccountsDb {
         reclaim: StoreReclaims,
         update_index_thread_selection: UpdateIndexThreadSelection,
     ) -> StoreAccountsTiming {
+        use std::str::FromStr;
+        let pk_str = [
+            "Stake11111111111111111111111111111111111111",
+            "StakeConfig11111111111111111111111111111111",
+            "St8k9dVXP97xT6faW24YmRSYConLbhsMJA4TJTBLmMT",
+        ];
+        let pk0: Vec<_> = pk_str
+            .iter()
+            .map(|s| Pubkey::from_str(s).unwrap())
+            .collect();
+
+        for index in 0..accounts.len() {
+            let to_log = accounts.account(index, |account| {
+                let pk = *account.pubkey();
+                if pk0.contains(&pk) {
+                    let lamports = account.lamports();
+                    let hash = AccountsDb::hash_account(&account, &pk);
+                    Some((pk, lamports, hash))
+                } else {
+                    None
+                }
+            });
+            if let Some(to_log) = to_log {
+                log::error!("haoran accounts-db store {:?}", to_log);
+            }
+        }
+
         self.stats
             .store_num_accounts
             .fetch_add(accounts.len() as u64, Ordering::Relaxed);
