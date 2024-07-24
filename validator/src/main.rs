@@ -1283,12 +1283,11 @@ pub fn main() {
         write_cache_limit_bytes: value_t!(matches, "accounts_db_cache_limit_mb", u64)
             .ok()
             .map(|mb| mb * MB as u64),
-        ancient_append_vec_offset: value_t!(matches, "accounts_db_ancient_append_vecs", i64).ok(),
+        ancient_append_vec_offset: None,
         exhaustively_verify_refcounts: matches.is_present("accounts_db_verify_refcounts"),
         create_ancient_storage,
         test_partitioned_epoch_rewards,
-        test_skip_rewrites_but_include_in_bank_hash: matches
-            .is_present("accounts_db_test_skip_rewrites"),
+        test_skip_rewrites_but_include_in_bank_hash: false,
         storage_access,
         ..AccountsDbConfig::default()
     };

@@ -313,13 +313,11 @@ pub fn get_accounts_db_config(
         index: Some(accounts_index_config),
         base_working_path: Some(ledger_tool_ledger_path),
         accounts_hash_cache_path: Some(accounts_hash_cache_path),
-        ancient_append_vec_offset: value_t!(arg_matches, "accounts_db_ancient_append_vecs", i64)
-            .ok(),
+        ancient_append_vec_offset: None,
         exhaustively_verify_refcounts: arg_matches.is_present("accounts_db_verify_refcounts"),
         skip_initial_hash_calc: arg_matches.is_present("accounts_db_skip_initial_hash_calculation"),
         test_partitioned_epoch_rewards,
-        test_skip_rewrites_but_include_in_bank_hash: arg_matches
-            .is_present("accounts_db_test_skip_rewrites"),
+        test_skip_rewrites_but_include_in_bank_hash: false,
         create_ancient_storage,
         storage_access,
         ..AccountsDbConfig::default()
