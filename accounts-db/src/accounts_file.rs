@@ -99,7 +99,6 @@ impl AccountsFile {
         }
     }
 
-
     /// true if this storage can possibly be appended to (independent of capacity check)
     pub(crate) fn can_append(&self) -> bool {
         match self {
@@ -323,8 +322,8 @@ impl AccountsFile {
 /// An enum that creates AccountsFile instance with the specified format.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub enum AccountsFileProvider {
-    #[default]
     AppendVec,
+    #[default]
     HotStorage,
 }
 
