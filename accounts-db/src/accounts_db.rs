@@ -2376,7 +2376,7 @@ impl<'a> AppendVecScan for ScanState<'a> {
         let mut account_hash = loaded_account.loaded_hash();
 
         let hash_is_missing = account_hash == AccountHash(Hash::default());
-        if hash_is_missing {
+        if hash_is_missing || true {
             let computed_hash = AccountsDb::hash_account_data(
                 loaded_account.lamports(),
                 loaded_account.owner(),
@@ -2385,6 +2385,9 @@ impl<'a> AppendVecScan for ScanState<'a> {
                 loaded_account.data(),
                 loaded_account.pubkey(),
             );
+            if !hash_is_missing {
+                log::error!("different hashes: {}, {}", account_hash.0, computed_hash.0);
+            }
             account_hash = computed_hash;
         }
         let source_item = CalculateHashIntermediate {
