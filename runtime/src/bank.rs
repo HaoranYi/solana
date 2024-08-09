@@ -4340,8 +4340,9 @@ impl Bank {
     /// false if rent collection DOES rewrite accounts if the account is rent exempt
     /// This is the default behavior historically.
     fn bank_hash_skips_rent_rewrites(&self) -> bool {
-        self.feature_set
-            .is_active(&feature_set::skip_rent_rewrites::id())
+        false
+        //self.feature_set
+        //    .is_active(&feature_set::skip_rent_rewrites::id())
     }
 
     /// true if rent fees should be collected (i.e. disable_rent_fees_collection is NOT enabled)
