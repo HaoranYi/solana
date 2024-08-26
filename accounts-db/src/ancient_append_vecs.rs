@@ -13,7 +13,7 @@ use {
             ShrinkCollectAliveSeparatedByRefs, ShrinkStatsSub,
         },
         accounts_file::AccountsFile,
-        accounts_index::AccountsIndexScanResult,
+        accounts_index::{AccountsIndexScanResult, ScanFilter},
         active_stats::ActiveStatItem,
         storable_accounts::{StorableAccounts, StorableAccountsBySlot},
     },
@@ -501,6 +501,7 @@ impl AccountsDb {
                     },
                     None,
                     true,
+                    ScanFilter::All,
                 );
             });
         });
@@ -3892,6 +3893,7 @@ pub mod tests {
                 },
                 None,
                 false,
+                ScanFilter::All,
             );
             // should have removed all of them
             assert!(expected_ref_counts.is_empty());
