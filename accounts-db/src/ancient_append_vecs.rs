@@ -17,12 +17,13 @@ use {
         active_stats::ActiveStatItem,
         storable_accounts::{StorableAccounts, StorableAccountsBySlot},
     },
+    log::info,
     rand::{thread_rng, Rng},
     rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
     solana_measure::measure_us,
-    solana_sdk::clock::Slot,
+    solana_sdk::{account::ReadableAccount, clock::Slot},
     std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         num::{NonZeroU64, Saturating},
         sync::{atomic::Ordering, Arc, Mutex},
     },
@@ -536,6 +537,20 @@ impl AccountsDb {
         let target_slot = accounts_to_write.target_slot();
         let (shrink_in_progress, create_and_insert_store_elapsed_us) =
             measure_us!(self.get_store_for_shrink(target_slot, bytes));
+
+        info!("ancient pack target: {}", target_slot);
+        (0..accounts_to_write.len()).for_each(|index| {
+            accounts_to_write.account(index, |account| {
+                let slot = accounts_to_write.slot(index);
+                info!(
+                    "\t {} {} {:?}",
+                    slot,
+                    account.pubkey(),
+                    account.to_account_shared_data()
+                )
+            });
+        });
+
         let (store_accounts_timing, rewrite_elapsed_us) = measure_us!(
             self.store_accounts_frozen(accounts_to_write, shrink_in_progress.new_storage(),)
         );
@@ -640,6 +655,13 @@ impl AccountsDb {
         self.thread_pool_clean.install(|| {
             packer.par_iter().for_each(|(target_slot, pack)| {
                 let mut write_ancient_accounts_local = WriteAncientAccounts::default();
+
+                info!(
+                    "ancient pack: target_slot = {}, source_slots = {:?}",
+                    **target_slot,
+                    pack.get_all_slots(),
+                );
+
                 self.write_one_packed_storage(
                     pack,
                     **target_slot,
@@ -1040,6 +1062,13 @@ impl<'a> PackedAncientStorage<'a> {
             });
         }
         result
+    }
+
+    fn get_all_slots(&self) -> HashSet<Slot> {
+        self.accounts
+            .iter()
+            .map(|(slot, _)| *slot)
+            .collect::<HashSet<_>>()
     }
 }
 
