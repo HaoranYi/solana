@@ -3324,6 +3324,13 @@ impl AccountsDb {
             self.exhaustively_verify_refcounts(max_clean_root_inclusive);
         }
 
+        use std::str::FromStr;
+        let pks = ["GMPF5BJA4An877Ut9hui2tE9EJ9GCFgZKknnk3EhGrti"];
+        let pks_interested = pks
+            .iter()
+            .map(|s| Pubkey::from_str(s).unwrap())
+            .collect::<Vec<_>>();
+
         let _guard = self.active_stats.activate(ActiveStatItem::Clean);
 
         let ancient_account_cleans = AtomicU64::default();
@@ -3801,6 +3808,8 @@ impl AccountsDb {
             let (dead_slots, reclaimed_offsets) =
                 self.remove_dead_accounts(reclaims, expected_single_dead_slot, reset_accounts);
             reclaim_result.1 = reclaimed_offsets;
+
+            error!("haoran dead_slots {:?}", dead_slots);
 
             if let HandleReclaims::ProcessDeadSlots(purge_stats) = handle_reclaims {
                 if let Some(expected_single_dead_slot) = expected_single_dead_slot {
@@ -8870,6 +8879,7 @@ impl AccountsDb {
                 self.dirty_stores.insert(slot, Arc::clone(storage));
                 self.accounts_index.add_uncleaned_roots([slot].into_iter());
                 self.shrink_candidate_slots.lock().unwrap().insert(slot);
+                error!("haoran found all zeros {}", slot);
             }
             let items = items_local.into_iter().map(|info| {
                 if let Some(amount_to_top_off_rent_this_account) = Self::stats_for_rent_payers(
