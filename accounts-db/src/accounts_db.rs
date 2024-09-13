@@ -279,6 +279,19 @@ impl<'a> ShrinkCollectRefs<'a> for ShrinkCollectAliveSeparatedByRefs<'a> {
         account: &'a AccountFromStorage,
         slot_list: &[(Slot, AccountInfo)],
     ) {
+        let pks = [
+            "re3BvfDAFjui6ZdkDDdyEeBVu4uQEZzCuvxeZBaSpq9",
+            "8gmjimZJvU1V3pZ6WcQhVHyFKC89gyTWxQznrV8UQ1MT",
+            "F8uojUzyFsjFoAHdEzb8NeMbCpRUUS5xmXcQYm6tYjtN",
+        ];
+        use std::str::FromStr;
+        let pks: Vec<_> = pks.iter().map(|k| Pubkey::from_str(k).unwrap()).collect();
+
+        let key = account.pubkey();
+        if pks.contains(&key) {
+            log::error!("haoran shrink collect {} {:?}", key, slot_list);
+        }
+
         let other = if ref_count == 1 {
             &mut self.one_ref
         } else if slot_list.len() == 1
@@ -9121,8 +9134,10 @@ impl AccountsDb {
                                 .fetch_add(slot_keys.len() as u64, Ordering::Relaxed);
                             let unique_keys =
                                 HashSet::<Pubkey>::from_iter(slot_keys.iter().map(|(_, key)| *key));
+
                             for (slot, key) in slot_keys {
-                                self.uncleaned_pubkeys.entry(slot).or_default().push(key);
+                                //self.uncleaned_pubkeys.entry(slot).or_default().push(key);
+                                log::error!("dup keys {key}, {slot}");
                             }
                             let unique_pubkeys_by_bin_inner =
                                 unique_keys.into_iter().collect::<Vec<_>>();

@@ -370,6 +370,16 @@ impl AccountsDb {
             .map(|alive| alive.bytes)
             .sum::<usize>();
         let required_ideal_packed = (alive_bytes as u64 / tuning.ideal_storage_size + 1) as usize;
+
+        log::error!(
+            "haoran many_ref_check alive_bytes={alive_bytes}, required_ideal_packed={required_ideal_packed}, target_slots_len={}",
+            target_slots_sorted.len()
+        );
+
+        log::error!(
+            "haoran many_ref_check target_slots={:?}",
+            target_slots_sorted
+        );
         if alive_bytes == 0 {
             // nothing required, so no problem moving nothing
             return true;
@@ -382,6 +392,12 @@ impl AccountsDb {
             .saturating_sub(required_ideal_packed);
 
         let highest_slot = target_slots_sorted[i_last];
+
+        let ss: Vec<_> = many_refs_newest.iter().map(|many| many.slot).collect();
+
+        log::error!("haoran many_ref_check i_last={i_last}, high_slot={highest_slot}");
+        log::error!("haoran many_ref_slots={:?}", ss);
+
         many_refs_newest
             .iter()
             .all(|many| many.slot <= highest_slot)
