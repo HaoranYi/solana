@@ -9137,7 +9137,7 @@ impl AccountsDb {
 
                             for (slot, key) in slot_keys {
                                 //self.uncleaned_pubkeys.entry(slot).or_default().push(key);
-                                log::error!("dup keys {key}, {slot}");
+                                //log::error!("dup keys {key}, {slot}");
                             }
                             let unique_pubkeys_by_bin_inner =
                                 unique_keys.into_iter().collect::<Vec<_>>();
