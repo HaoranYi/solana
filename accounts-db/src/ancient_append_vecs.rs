@@ -365,6 +365,9 @@ impl AccountsDb {
         target_slots_sorted: &[Slot],
         tuning: &PackedAncientStorageTuning,
     ) -> bool {
+        // number to just pack many_refs_newest: N.
+        // we only start including many_refs_newest after we have enough slots to pack all alive accounts.
+        // N < slots_required!!! -- must be safe!
         let alive_bytes = many_refs_newest
             .iter()
             .map(|alive| alive.bytes)
