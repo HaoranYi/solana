@@ -884,10 +884,17 @@ impl AccountsDb {
             } else {
                 // No alive accounts in this slot have a ref_count > 1. So, ALL alive accounts in this slot can be written to any other slot
                 // we find convenient. There is NO other instance of any account to conflict with.
+
+                log::error!("haoran calc_accounts_to_combine add target {}", info.slot);
                 target_slots_sorted.push(info.slot);
             }
         }
         let unpackable_slots_count = remove.len();
+
+        for i in remove.iter().rev() {
+            accounts_to_combine.remove(*i);
+        }
+
         target_slots_sorted.sort_unstable();
         self.shrink_ancient_stats
             .slots_cannot_move_count
