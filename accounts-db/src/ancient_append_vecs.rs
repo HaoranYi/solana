@@ -393,7 +393,8 @@ impl AccountsDb {
 
         let highest_slot = target_slots_sorted[i_last];
 
-        let ss: Vec<_> = many_refs_newest.iter().map(|many| many.slot).collect();
+        let mut ss: Vec<_> = many_refs_newest.iter().map(|many| many.slot).collect();
+        ss.retain(|s| *s > highest_slot);
 
         log::error!("haoran many_ref_check i_last={i_last}, high_slot={highest_slot}");
         log::error!("haoran many_ref_slots={:?}", ss);
@@ -451,8 +452,9 @@ impl AccountsDb {
         ) {
             datapoint_info!("shrink_ancient_stats", ("high_slot", 1, i64));
             log::info!(
-                "unable to ancient pack: highest available slot: {:?}, lowest required slot: {:?}",
+                "unable to ancient pack: highest available slot: {:?}, lowest required slot: {:?}, highest required slot {:?}",
                 accounts_to_combine.target_slots_sorted.last(),
+                many_refs_newest.first().map(|accounts| accounts.slot),
                 many_refs_newest.last().map(|accounts| accounts.slot)
             );
             return;
@@ -784,6 +786,12 @@ impl AccountsDb {
         // We obviously require 1 packed slot if we have at 1 alive byte.
         let min_resulting_packed_slots =
             alive_bytes.saturating_sub(1) / u64::from(tuning.ideal_storage_size) + 1;
+
+        log::error!(
+            "haoran calc_accounts_to_combine alive_bytes={}, min_resulting_packed_slots={}",
+            alive_bytes,
+            min_resulting_packed_slots
+        );
         let mut remove = Vec::default();
         let mut last_slot = None;
         for (i, (shrink_collect, (info, _unique_accounts))) in accounts_to_combine
@@ -795,6 +803,7 @@ impl AccountsDb {
             if let Some(last_slot) = last_slot {
                 assert!(last_slot > info.slot);
             }
+
             last_slot = Some(info.slot);
 
             let many_refs_old_alive = &mut shrink_collect.alive_accounts.many_refs_old_alive;
@@ -816,6 +825,12 @@ impl AccountsDb {
                     // we have prepared to pack enough normal target slots, that form now on we can safely pack
                     // any 'many ref' slots.
                     many_ref_slots = IncludeManyRefSlots::Include;
+                    log::error!(
+                        "haoran calc_accounts_to_combine toggle include_many_ref {}, {} {}",
+                        info.slot,
+                        target_slots_sorted.len(),
+                        required_packed_slots,
+                    );
                 } else {
                     // Skip this because too few valid slots have been processed so far.
                     // There are 'many ref newest' accounts in this slot. They must be packed into slots that are >= the current slot value.
@@ -824,6 +839,8 @@ impl AccountsDb {
                     self.shrink_ancient_stats
                         .many_ref_slots_skipped
                         .fetch_add(1, Ordering::Relaxed);
+
+                    log::error!("haoran calc_accounts_to_combine skip {}", info.slot);
                     remove.push(i);
                     continue;
                 }
@@ -856,6 +873,10 @@ impl AccountsDb {
                         .is_empty()
                 {
                     // all accounts in this append vec are alive and have > 1 ref, so nothing to be done for this append vec
+                    log::error!(
+                        "haoran calc_accounts_to_combine only old_multi_ref {}",
+                        info.slot
+                    );
                     remove.push(i);
                     continue;
                 }
