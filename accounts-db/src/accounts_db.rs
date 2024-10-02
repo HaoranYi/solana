@@ -57,8 +57,7 @@ use {
             get_ancient_append_vec_capacity, is_ancient, AccountsToStore, StorageSelector,
         },
         append_vec::{
-            aligned_stored_size, APPEND_VEC_MMAPPED_FILES_CLOSED, APPEND_VEC_MMAPPED_FILES_DIRTY,
-            APPEND_VEC_MMAPPED_FILES_OPEN, APPEND_VEC_MMAPPED_FILES_OPENED,
+            aligned_stored_size, APPEND_VEC_MMAPPED_FILES_DIRTY, APPEND_VEC_MMAPPED_FILES_OPEN,
             APPEND_VEC_OPEN_AS_FILE_IO, STORE_META_OVERHEAD,
         },
         cache_hash_data::{CacheHashData, DeletionPolicy as CacheHashDeletionPolicy},
@@ -1966,16 +1965,6 @@ impl LatestAccountsIndexRootsStats {
             (
                 "append_vecs_open",
                 APPEND_VEC_MMAPPED_FILES_OPEN.load(Ordering::Relaxed) as i64,
-                i64
-            ),
-            (
-                "append_vecs_opened",
-                APPEND_VEC_MMAPPED_FILES_OPENED.swap(0, Ordering::Relaxed) as i64,
-                i64
-            ),
-            (
-                "append_vecs_closed",
-                APPEND_VEC_MMAPPED_FILES_CLOSED.swap(0, Ordering::Relaxed) as i64,
                 i64
             ),
             (

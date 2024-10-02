@@ -296,15 +296,12 @@ const SCAN_BUFFER_SIZE_WITHOUT_DATA: usize = 1 << 16;
 
 lazy_static! {
     pub static ref APPEND_VEC_MMAPPED_FILES_OPEN: AtomicU64 = AtomicU64::default();
-    pub static ref APPEND_VEC_MMAPPED_FILES_OPENED: AtomicU64 = AtomicU64::default();
-    pub static ref APPEND_VEC_MMAPPED_FILES_CLOSED: AtomicU64 = AtomicU64::default();
     pub static ref APPEND_VEC_MMAPPED_FILES_DIRTY: AtomicU64 = AtomicU64::default();
     pub static ref APPEND_VEC_OPEN_AS_FILE_IO: AtomicU64 = AtomicU64::default();
 }
 
 impl Drop for AppendVec {
     fn drop(&mut self) {
-        APPEND_VEC_MMAPPED_FILES_CLOSED.fetch_add(1, Ordering::Relaxed);
         APPEND_VEC_MMAPPED_FILES_OPEN.fetch_sub(1, Ordering::Relaxed);
         match &self.backing {
             AppendVecFileBacking::Mmap(mmap_only) => {
@@ -374,7 +371,6 @@ impl AppendVec {
             );
             std::process::exit(1);
         });
-        APPEND_VEC_MMAPPED_FILES_OPENED.fetch_add(1, Ordering::Relaxed);
         APPEND_VEC_MMAPPED_FILES_OPEN.fetch_add(1, Ordering::Relaxed);
 
         AppendVec {
