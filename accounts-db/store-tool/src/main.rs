@@ -43,18 +43,27 @@ fn main() {
     let mut num_accounts = Saturating(0usize);
     let mut stored_accounts_size = Saturating(0);
     store.scan_accounts(|account| {
-        if verbose {
-            println!("{account:?}");
-        } else {
+        if account.lamports() == 0 && account.data_len() != 0 {
             println!(
-                "{:#0offset_width$x}: {:44}, owner: {:44}, data size: {:data_size_width$}, lamports: {}",
-                account.offset(),
-                account.pubkey().to_string(),
-                account.owner().to_string(),
-                account.data_len(),
+                "found zero account with data not zero: {} {} {}",
+                account.pubkey(),
                 account.lamports(),
+                account.data_len()
             );
         }
+
+        // if verbose {
+        //     println!("{account:?}");
+        // } else {
+        //     println!(
+        //         "{:#0offset_width$x}: {:44}, owner: {:44}, data size: {:data_size_width$}, lamports: {}",
+        //         account.offset(),
+        //         account.pubkey().to_string(),
+        //         account.owner().to_string(),
+        //         account.data_len(),
+        //         account.lamports(),
+        //     );
+        // }
         num_accounts += 1;
         stored_accounts_size += account.stored_size();
     });
