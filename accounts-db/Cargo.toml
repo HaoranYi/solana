@@ -21,6 +21,7 @@ crossbeam-channel = { workspace = true }
 dashmap = { workspace = true, features = ["rayon", "raw-api"] }
 index_list = { workspace = true }
 indexmap = { workspace = true }
+io-uring = "0.6"
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }

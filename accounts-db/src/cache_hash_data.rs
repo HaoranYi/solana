@@ -320,8 +320,60 @@ impl CacheHashData {
         file_name: impl AsRef<Path>,
         data: &SavedTypeSlice,
     ) -> Result<(), std::io::Error> {
-        self.save_internal(file_name, data)
+        //self.save_internal(file_name, data)
+        Self::write_to_file_with_io_uring(file_name, data)
     }
+
+    fn write_to_file_with_io_uring(
+        file_path: impl AsRef<Path>,
+        data: &SavedTypeSlice,
+    ) -> std::io::Result<()> {
+        use io_uring::{opcode, types, IoUring};
+        use std::fs::File;
+        use std::io::Write;
+        use std::os::unix::io::AsRawFd;
+
+        let len = data.iter().map(Vec::len).sum::<usize>();
+        let len_bytes = (len as u64).to_le_bytes();
+        let mut to_write = len_bytes.to_vec();
+
+        let data_bytes: Vec<u8> = data
+            .iter()
+            .flat_map(|vec| {
+                vec.iter()
+                    .flat_map(|entry| bytemuck::bytes_of(entry).to_vec())
+            })
+            .collect();
+
+        to_write.extend(data_bytes);
+
+        let mut ring = IoUring::new(256)?;
+        let file = File::create(file_path)?;
+        let fd = file.as_raw_fd();
+
+        let entry = opcode::Write::new(types::Fd(fd), to_write.as_ptr(), to_write.len() as u32)
+            .build()
+            .user_data(0x42);
+
+        unsafe {
+            ring.submission()
+                .push(&entry)
+                .expect("submission queue is full");
+        }
+
+        ring.submit_and_wait(1)?;
+
+        let cqe = ring.completion().next().expect("completion queue is empty");
+        assert_eq!(cqe.user_data(), 0x42);
+        assert!(cqe.result() >= 0, "write failed");
+
+        Ok(())
+    }
+
+    // fn main() {
+    //     let data = b"Hello, io_uring!";
+    //     write_to_file_with_io_uring("/tmp/test_io_uring.txt", data).expect("write failed");
+    // }
 
     fn save_internal(
         &self,
