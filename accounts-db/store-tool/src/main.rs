@@ -60,13 +60,21 @@ fn main() {
     ];
 
     store.scan_accounts(|account| {
-        if sys_var_ids.contains(account.pubkey()) && account.rent_epoch() != u64::MAX {
+        if sys_var_ids.contains(account.pubkey()) {
             println!(
-                "found account with rent_epoch not MAX: {} {} {}",
+                "sysvar account: {} {} {}",
                 account.pubkey(),
                 account.rent_epoch(),
-                account.lamports()
+                account.lamports(),
             );
+            if account.rent_epoch() != u64::MAX {
+                println!(
+                    "found account with rent_epoch not MAX: {} {} {}",
+                    account.pubkey(),
+                    account.rent_epoch(),
+                    account.lamports()
+                );
+            }
         }
 
         // if account.lamports() == 0 && account.data_len() != 0 {
