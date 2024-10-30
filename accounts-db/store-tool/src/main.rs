@@ -1,7 +1,7 @@
 use {
     clap::{crate_description, crate_name, value_t_or_exit, App, Arg},
     solana_accounts_db::append_vec::AppendVec,
-    solana_sdk::{account::ReadableAccount, system_instruction::MAX_PERMITTED_DATA_LENGTH},
+    solana_sdk::{account::ReadableAccount, system_instruction::MAX_PERMITTED_DATA_LENGTH, sysvar},
     std::{mem::ManuallyDrop, num::Saturating},
 };
 
@@ -42,15 +42,41 @@ fn main() {
 
     let mut num_accounts = Saturating(0usize);
     let mut stored_accounts_size = Saturating(0);
+
+    let sys_var_ids = [
+        // sysvars
+        solana_sdk::sysvar::clock::id(),
+        solana_sdk::sysvar::epoch_rewards::id(),
+        solana_sdk::sysvar::epoch_schedule::id(),
+        solana_sdk::sysvar::fees::id(),
+        solana_sdk::sysvar::instructions::id(),
+        solana_sdk::sysvar::last_restart_slot::id(),
+        solana_sdk::sysvar::recent_blockhashes::id(),
+        solana_sdk::sysvar::rent::id(),
+        solana_sdk::sysvar::rewards::id(),
+        solana_sdk::sysvar::slot_hashes::id(),
+        solana_sdk::sysvar::slot_history::id(),
+        solana_sdk::sysvar::stake_history::id(),
+    ];
+
     store.scan_accounts(|account| {
-        if account.lamports() == 0 && account.data_len() != 0 {
+        if sys_var_ids.contains(account.pubkey()) && account.rent_epoch() != u64::MAX {
             println!(
-                "found zero account with data not zero: {} {} {}",
+                "found account with rent_epoch not MAX: {} {} {}",
                 account.pubkey(),
-                account.lamports(),
-                account.data_len()
+                account.rent_epoch(),
+                account.lamports()
             );
         }
+
+        // if account.lamports() == 0 && account.data_len() != 0 {
+        //     println!(
+        //         "found zero account with data not zero: {} {} {}",
+        //         account.pubkey(),
+        //         account.lamports(),
+        //         account.data_len()
+        //     );
+        // }
 
         // if verbose {
         //     println!("{account:?}");
