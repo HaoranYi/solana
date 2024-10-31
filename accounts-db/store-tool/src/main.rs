@@ -5,6 +5,8 @@ use {
     std::{mem::ManuallyDrop, num::Saturating},
 };
 
+// find ~/ledger/accounts/run/ -maxdepth 1 -type f -exec ~/src/agave/target/release/agave-store-tool {} \; >a.txt
+
 fn main() {
     let matches = App::new(crate_name!())
         .about(crate_description!())
