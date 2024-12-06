@@ -3236,6 +3236,7 @@ impl AccountsDb {
             ),
             ("next_store_id", self.next_id.load(Ordering::Relaxed), i64),
         );
+        panic!("done clean_accounts");
     }
 
     /// Removes the accounts in the input `reclaims` from the tracked "count" of
