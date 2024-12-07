@@ -223,6 +223,9 @@ pub fn bank_from_snapshot_archives(
         (base_slot, base_capitalization)
     });
 
+    bank.clean_accounts();
+    panic!("haha");
+
     let mut measure_verify = Measure::start("verify");
     if !bank.verify_snapshot_bank(
         test_hash_calculation,

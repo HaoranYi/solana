@@ -2783,6 +2783,8 @@ impl AccountsDb {
         epoch_schedule: &EpochSchedule,
         old_storages_policy: OldStoragesPolicy,
     ) {
+        info!("haoran clean_accounts {max_clean_root_inclusive:?} {is_startup}",);
+
         if self.exhaustively_verify_refcounts {
             self.exhaustively_verify_refcounts(max_clean_root_inclusive);
         }
@@ -2951,6 +2953,7 @@ impl AccountsDb {
 
         let mut store_counts_time = Measure::start("store_counts");
 
+        // By now, candidates_bin only contains keys where the last entry in the slot list is zero lamports.
         // Calculate store counts as if everything was purged
         // Then purge if we can
         let mut store_counts: HashMap<Slot, (usize, HashSet<Pubkey>)> = HashMap::new();
@@ -3236,7 +3239,7 @@ impl AccountsDb {
             ),
             ("next_store_id", self.next_id.load(Ordering::Relaxed), i64),
         );
-        panic!("done clean_accounts");
+        info!("haoran done clean_accounts");
     }
 
     /// Removes the accounts in the input `reclaims` from the tracked "count" of
