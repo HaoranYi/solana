@@ -170,7 +170,7 @@ impl Bank {
         account
             .set_state(&StakeStateV2::Stake(
                 meta,
-                partitioned_stake_reward.stake,
+                partitioned_stake_reward.stake, // There is a bug here. if between the stake delegation changed, i.e. deactivated, then we will lost it when we reward the account!!!
                 flags,
             ))
             .map_err(|_| DistributionError::UnableToSetState)?;
