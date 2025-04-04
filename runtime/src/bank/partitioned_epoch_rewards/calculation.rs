@@ -340,6 +340,12 @@ impl Bank {
                     let stake_pubkey = **stake_pubkey;
                     let vote_pubkey = stake_account.delegation().voter_pubkey;
                     let (vote_account, from_db) = get_vote_account(&vote_pubkey);
+                    if from_db {
+                        // Cache the vote account for future use
+                        metrics
+                            .stake_delegation_from_vote_accounts_in_db
+                            .fetch_add(1, Relaxed);
+                    }
                     let vote_account = vote_account?;
                     if vote_account.owner() != &solana_vote_program {
                         return None;

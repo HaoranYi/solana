@@ -24,6 +24,7 @@ pub(crate) struct RewardsMetrics {
     pub(crate) store_vote_accounts_us: AtomicU64,
     pub(crate) vote_accounts_cache_miss_count: AtomicU64,
     pub(crate) vote_reward_cache_miss_count: AtomicU64,
+    pub(crate) stake_delegation_from_vote_accounts_in_db: AtomicU64,
     pub(crate) hash_partition_rewards_us: u64,
 }
 
@@ -102,6 +103,13 @@ pub(crate) fn report_new_epoch_metrics(
         (
             "vote_reward_cache_miss_count",
             metrics.vote_reward_cache_miss_count.load(Relaxed),
+            i64
+        ),
+        (
+            "stake_delegation_from_vote_accounts_in_db",
+            metrics
+                .stake_delegation_from_vote_accounts_in_db
+                .load(Relaxed),
             i64
         ),
         (
