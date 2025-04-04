@@ -301,17 +301,20 @@ impl Bank {
 
         let solana_vote_program: Pubkey = solana_vote_program::id();
 
-        let get_vote_account = |vote_pubkey: &Pubkey| -> Option<VoteAccount> {
+        let get_vote_account = |vote_pubkey: &Pubkey| -> (Option<VoteAccount>, bool) {
             if let Some(vote_account) = cached_vote_accounts.get(vote_pubkey) {
-                return Some(vote_account.clone());
+                return (Some(vote_account.clone()), false);
             }
             // If accounts-db contains a valid vote account, then it should
             // already have been cached in cached_vote_accounts; so the code
             // below is only for sanity checking, and can be removed once
             // the cache is deemed to be reliable.
             metrics.vote_accounts_cache_miss_count.fetch_add(1, Relaxed);
-            let account = self.get_account_with_fixed_root(vote_pubkey)?;
-            VoteAccount::try_from(account).ok()
+            let account = self.get_account_with_fixed_root(vote_pubkey);
+            if account.is_none() {
+                return (None, true);
+            }
+            (VoteAccount::try_from(account.unwrap()).ok(), true)
         };
 
         let new_warmup_cooldown_rate_epoch = self.new_warmup_cooldown_rate_epoch();
@@ -336,7 +339,8 @@ impl Bank {
 
                     let stake_pubkey = **stake_pubkey;
                     let vote_pubkey = stake_account.delegation().voter_pubkey;
-                    let vote_account = get_vote_account(&vote_pubkey)?;
+                    let (vote_account, from_db) = get_vote_account(&vote_pubkey);
+                    let vote_account = vote_account?;
                     if vote_account.owner() != &solana_vote_program {
                         return None;
                     }
@@ -354,6 +358,11 @@ impl Bank {
                     );
 
                     if let Ok((stakers_reward, voters_reward)) = redeemed {
+                        if from_db {
+                            // Cache the vote account for future use
+                            metrics.vote_reward_cache_miss_count.fetch_add(1, Relaxed);
+                        }
+
                         let commission = vote_state_view.commission();
 
                         // track voter rewards
