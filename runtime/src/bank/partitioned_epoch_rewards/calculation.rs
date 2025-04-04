@@ -315,8 +315,11 @@ impl Bank {
         };
 
         let new_warmup_cooldown_rate_epoch = self.new_warmup_cooldown_rate_epoch();
-        let vote_account_rewards: VoteRewards =
-            DashMap::with_capacity_and_hasher(2000, AHashRandomState::default());
+        let estimated_num_vote_accounts = cached_vote_accounts.len();
+        let vote_account_rewards: VoteRewards = DashMap::with_capacity_and_hasher(
+            estimated_num_vote_accounts,
+            AHashRandomState::default(),
+        );
 
         let total_stake_rewards = AtomicU64::default();
         let (stake_rewards, measure_stake_rewards_us) = measure_us!(thread_pool.install(|| {
