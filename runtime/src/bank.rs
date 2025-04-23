@@ -1645,6 +1645,7 @@ impl Bank {
         let epoch = self.epoch();
         let slot = self.slot();
         let (thread_pool, thread_pool_time_us) = measure_us!(ThreadPoolBuilder::new()
+            .num_threads(4)
             .thread_name(|i| format!("solBnkNewEpch{i:02}"))
             .build()
             .expect("new rayon threadpool"));
