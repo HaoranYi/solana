@@ -318,7 +318,7 @@ impl Bank {
         let vote_account_rewards: VoteRewards = DashMap::with_capacity_and_hasher_and_shard_amount(
             estimated_num_vote_accounts,
             AHashRandomState::default(),
-            1024, // shard amount
+            2048, // shard amount
         );
 
         let total_stake_rewards = AtomicU64::default();
