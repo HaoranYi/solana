@@ -314,7 +314,13 @@ impl Bank {
             if account.is_none() {
                 return (None, true);
             }
-            (VoteAccount::try_from(account.unwrap()).ok(), true)
+
+            let account = account.unwrap();
+            info!(
+                "Vote account not found in cache, but found in accounts-db: {} {:?}",
+                vote_pubkey, account
+            );
+            (VoteAccount::try_from(account).ok(), true)
         };
 
         let new_warmup_cooldown_rate_epoch = self.new_warmup_cooldown_rate_epoch();
