@@ -7,6 +7,7 @@ use {
     },
     solana_account::{AccountSharedData, ReadableAccount},
     solana_clock::{Epoch, Slot},
+    solana_measure::meas_dur,
     solana_pubkey::Pubkey,
     std::{
         cmp::Ordering,
@@ -259,12 +260,7 @@ impl<'a> StorableAccountsBySlot<'a> {
         }
     }
 
-    /// given an overall index for all accounts in self: return
-    /// (slots_and_accounts index, index within those accounts)
-    /// This implementation is optimized for performance by using binary search
-    /// on the starting_offsets based on the assumption that the
-    /// starting_offsets are always sorted.
-    fn find_internal_index(&self, index: usize) -> (usize, usize) {
+    fn find_internal_index_bin_search(&self, index: usize) -> (usize, usize) {
         let upper_bound =
             self.starting_offsets
                 .binary_search_by(|element| match element.cmp(&index) {
@@ -282,6 +278,82 @@ impl<'a> StorableAccountsBySlot<'a> {
                 (offset_index, index - prior_offset)
             }
         }
+    }
+
+    pub fn find_internal_index_loop(&self, index: usize) -> (usize, usize) {
+        // search offsets for the accounts slice that contains 'index'.
+        // This could be a binary search.
+        for (offset_index, next_offset) in self.starting_offsets.iter().enumerate() {
+            if next_offset > &index {
+                // offset of prior entry
+                let prior_offset = if offset_index > 0 {
+                    self.starting_offsets[offset_index.saturating_sub(1)]
+                } else {
+                    0
+                };
+                return (offset_index, index - prior_offset);
+            }
+        }
+        panic!("failed");
+    }
+
+    /// given an overall index for all accounts in self: return
+    /// (slots_and_accounts index, index within those accounts)
+    /// This implementation is optimized for performance by using binary search
+    /// on the starting_offsets based on the assumption that the
+    /// starting_offsets are always sorted.
+    fn find_internal_index(&self, index: usize) -> (usize, usize) {
+        static MEASURE_FIND_INTERNAL_INDEX_BIN_SEARCH: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        static MEASURE_FIND_INTERNAL_INDEX_LOOP_SEARCH: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        static ARR_SIZE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        static LAST_REPORT_TIME: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+
+        let (ret, dur) = meas_dur!({ self.find_internal_index_bin_search(index) });
+        let (ret2, dur2) = meas_dur!({ self.find_internal_index_loop(index) });
+        assert_eq!(ret, ret2, "find_internal_index should be deterministic");
+
+        MEASURE_FIND_INTERNAL_INDEX_BIN_SEARCH
+            .fetch_add(dur.as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+        MEASURE_FIND_INTERNAL_INDEX_LOOP_SEARCH
+            .fetch_add(dur2.as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+        ARR_SIZE.fetch_max(
+            self.starting_offsets.len(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .expect("create timestamp in timing")
+            .as_millis() as u64;
+
+        let last = LAST_REPORT_TIME.load(std::sync::atomic::Ordering::Relaxed);
+        if now.saturating_sub(last) > 5000 {
+            LAST_REPORT_TIME.store(now, std::sync::atomic::Ordering::Relaxed);
+            datapoint_info!(
+                "find_internal_index",
+                (
+                    "bin_search_ns",
+                    MEASURE_FIND_INTERNAL_INDEX_BIN_SEARCH
+                        .swap(0, std::sync::atomic::Ordering::Relaxed) as i64,
+                    i64
+                ),
+                (
+                    "loop_search_ns",
+                    MEASURE_FIND_INTERNAL_INDEX_LOOP_SEARCH
+                        .swap(0, std::sync::atomic::Ordering::Relaxed) as i64,
+                    i64
+                ),
+                (
+                    "arr_size",
+                    ARR_SIZE.swap(0, std::sync::atomic::Ordering::Relaxed) as i64,
+                    i64
+                )
+            );
+        }
+        ret
     }
 }
 
@@ -365,29 +437,6 @@ pub mod tests {
         solana_hash::Hash,
         std::sync::Arc,
     };
-
-    impl StorableAccountsBySlot<'_> {
-        /// given an overall index for all accounts in self:
-        /// return (slots_and_accounts index, index within those accounts)
-        /// This is the baseline unoptimized implementation. It is not used in the validator. It
-        /// is used for testing an optimized version - `find_internal_index`, in the actual implementation.
-        pub fn find_internal_index_loop(&self, index: usize) -> (usize, usize) {
-            // search offsets for the accounts slice that contains 'index'.
-            // This could be a binary search.
-            for (offset_index, next_offset) in self.starting_offsets.iter().enumerate() {
-                if next_offset > &index {
-                    // offset of prior entry
-                    let prior_offset = if offset_index > 0 {
-                        self.starting_offsets[offset_index.saturating_sub(1)]
-                    } else {
-                        0
-                    };
-                    return (offset_index, index - prior_offset);
-                }
-            }
-            panic!("failed");
-        }
-    }
 
     /// this is used in the test for generation of storages
     /// this is no longer used in the validator.
