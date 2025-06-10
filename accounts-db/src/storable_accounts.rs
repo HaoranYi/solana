@@ -261,6 +261,13 @@ impl<'a> StorableAccountsBySlot<'a> {
     }
 
     fn find_internal_index_bin_search(&self, index: usize) -> (usize, usize) {
+        // special case for when there is only one slot, then we can just return the first index without searching.
+        // This happens when we are just shrinking a single slot storage, which happens often.
+        if self.starting_offsets.len() == 1 {
+            // if there is only one slot, we can just return the first index
+            return (0, index);
+        }
+
         let upper_bound =
             self.starting_offsets
                 .binary_search_by(|element| match element.cmp(&index) {
