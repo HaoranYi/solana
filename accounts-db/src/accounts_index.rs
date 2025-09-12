@@ -72,6 +72,7 @@ pub const ACCOUNTS_INDEX_CONFIG_FOR_BENCHMARKS: AccountsIndexConfig = AccountsIn
 };
 pub type ScanResult<T> = Result<T, ScanError>;
 pub type SlotList<T> = SmallVec<[(Slot, T); 1]>;
+pub type SlotList2<T> = Vec<(Slot, T)>;
 
 // The ref count cannot be higher than the total number of storages, and we should never have more
 // than 1 million storages. A 32-bit ref count should be *significantly* more than enough.

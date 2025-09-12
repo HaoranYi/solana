@@ -1,5 +1,5 @@
 use {
-    super::{AtomicRefCount, DiskIndexValue, IndexValue, RefCount, SlotList},
+    super::{AtomicRefCount, DiskIndexValue, IndexValue, RefCount, SlotList, SlotList2},
     crate::{
         bucket_map_holder::{Age, AtomicAge, BucketMapHolder},
         is_zero_lamport::IsZeroLamport,
@@ -22,6 +22,20 @@ pub struct AccountMapEntry<T> {
     /// Note that 'clean' removes outdated entries (ie. older roots) from this slot_list
     /// purge_slot() also removes non-rooted slots from this list
     pub slot_list: RwLock<SlotList<T>>,
+    /// synchronization metadata for in-memory state since last flush to disk accounts index
+    pub meta: AccountMapEntryMeta,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Default)]
+pub struct AccountMapEntry2<T> {
+    /// number of alive slots that contain >= 1 instances of account data for this pubkey
+    /// where alive represents a slot that has not yet been removed by clean via AccountsDB::clean_stored_dead_slots() for containing no up to date account information
+    ref_count: AtomicRefCount,
+    /// list of slots in which this pubkey was updated
+    /// Note that 'clean' removes outdated entries (ie. older roots) from this slot_list
+    /// purge_slot() also removes non-rooted slots from this list
+    pub slot_list: RwLock<SlotList2<T>>,
     /// synchronization metadata for in-memory state since last flush to disk accounts index
     pub meta: AccountMapEntryMeta,
 }

@@ -1,19 +1,22 @@
+#![allow(unused_imports)]
 use {
     crate::{
         accounts_index::{
             account_map_entry::{
-                AccountMapEntry, AccountMapEntryMeta, PreAllocatedAccountMapEntry,
+                AccountMapEntry, AccountMapEntry2, AccountMapEntryMeta, PreAllocatedAccountMapEntry,
             },
             DiskIndexValue, IndexValue, RefCount, SlotList, UpsertReclaim,
         },
         bucket_map_holder::{Age, AtomicAge, BucketMapHolder},
         bucket_map_holder_stats::BucketMapHolderStats,
+        compressed_pubkey::CompressedPubkey,
         pubkey_bins::PubkeyBinCalculator24,
     },
     rand::{thread_rng, Rng},
     solana_bucket_map::bucket_api::BucketApi,
     solana_clock::Slot,
     solana_measure::measure::Measure,
+    solana_nohash_hasher::BuildNoHashHasher,
     solana_pubkey::Pubkey,
     std::{
         cmp,
@@ -2248,5 +2251,14 @@ mod tests {
         );
         assert_eq!(test.slot_list.read().unwrap().len(), len);
         assert_eq!(len, 2);
+    }
+
+    #[test]
+    fn test_foo() {
+        let l1 = size_of::<AccountMapEntry<u64>>();
+        println!("size_of::<AccountMapEntry<u64>>() {}", l1);
+
+        let l2 = size_of::<AccountMapEntry2<u64>>();
+        println!("size_of::<AccountMapEntry2<u64>>() {}", l2);
     }
 }

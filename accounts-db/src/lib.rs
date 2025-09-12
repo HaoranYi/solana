@@ -3,6 +3,7 @@
 
 pub mod account_info;
 pub mod account_locks;
+pub mod account_map_entry_kind;
 pub mod account_storage;
 pub mod account_storage_reader;
 pub mod accounts;
@@ -24,7 +25,9 @@ pub mod blockhash_queue;
 mod bucket_map_holder;
 mod bucket_map_holder_stats;
 mod buffered_reader;
+pub mod compressed_pubkey;
 pub mod contains;
+pub mod u128_hash_demo;
 mod file_io;
 pub mod hardened_unpack;
 mod io_uring;
