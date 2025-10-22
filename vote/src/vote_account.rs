@@ -144,11 +144,13 @@ impl VoteAccounts {
                 let num_vote_accounts = self.vote_accounts.len();
 
                 // Count zero-stake accounts
+                let start_count = Instant::now();
                 let num_zero_stake = self
                     .vote_accounts
                     .values()
                     .filter(|(stake, _)| *stake == 0)
                     .count();
+                let count_zero_stake_us = start_count.elapsed().as_micros() as i64;
 
                 // OLD implementation with itertools
                 let start_old = Instant::now();
@@ -182,6 +184,7 @@ impl VoteAccounts {
                     ("num_vote_accounts", num_vote_accounts, i64),
                     ("num_zero_stake", num_zero_stake, i64),
                     ("final_map_size", final_map_size, i64),
+                    ("count_zero_stake_us", count_zero_stake_us, i64),
                     ("old_impl_us", elapsed_old_us, i64),
                     ("new_impl_us", elapsed_new_us, i64),
                     ("speedup_ratio", elapsed_old_us as f64 / elapsed_new_us as f64, f64),
